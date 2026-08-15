@@ -8,7 +8,7 @@ const DB_PATH = join(tmpdir(), `inkwell-test-${Date.now()}-${process.pid}.db`);
 process.env.INKWELL_DB = DB_PATH; // read lazily on first query, so this lands in time
 
 // Imported after the env assignment is what matters at call time, not import time.
-const { handleRequest, closeDb } = await import("./server.ts");
+const { handleRequest, closeDb, likeSearchPosts, buildFtsQuery } = await import("./server.ts");
 
 let server: ReturnType<typeof Bun.serve>;
 let base: string;
@@ -736,4 +736,190 @@ test("theme tokens, light mode, and theme toggle controls are present", async ()
   expect(js).toContain("inkwell-theme");
   expect(js).toContain("availableThemes");
   expect(js).toContain("applyTheme");
+});
+
+// ─── FTS5 search (spec: adws/prompts/01-fts5-search.md) ────────────────────
+
+test("migrates a pre-FTS database in place and backfills the index", async () => {
+  const Database = (await import("bun:sqlite")).Database;
+  const dbPath = join(tmpdir(), `inkwell-migrate-${Date.now()}-${process.pid}.db`);
+  const raw = new Database(dbPath, { create: true });
+  raw.run(`CREATE TABLE posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT,
+    status TEXT DEFAULT 'draft', target_word_count INTEGER DEFAULT 0,
+    created_at TEXT, updated_at TEXT
+  )`);
+  raw.run("INSERT INTO posts (title, content, status, created_at, updated_at) VALUES ('Legacy', 'ancient zqzqlegacyword draft', 'draft', '2026-01-01', '2026-01-01')");
+  raw.close();
+
+  const prev = process.env.INKWELL_DB;
+  process.env.INKWELL_DB = dbPath;
+  closeDb(); // next request re-opens against the pre-FTS file and upgrades it
+  try {
+    const res = await api("/posts?q=zqzqlegacyword");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.length).toBe(1);
+    expect(data[0].title).toBe("Legacy");
+    expect(data[0].snippet).toContain("<mark>");
+    expect(typeof data[0].rank).toBe("number");
+  } finally {
+    closeDb();
+    process.env.INKWELL_DB = prev;
+    for (const suffix of ["", "-shm", "-wal"]) rmSync(dbPath + suffix, { force: true });
+  }
+});
+
+test("posts_fts stays current through insert, update, and delete — no explicit reindex", async () => {
+  // INSERT fires the index trigger: a new word is immediately searchable
+  const created = await (await post("/posts", { title: "Trigger Test", content: "zqzqinsertterm appears here" })).json();
+  let hits = await (await api("/posts?q=zqzqinsertterm")).json();
+  expect(hits.some((p: { id: number }) => p.id === created.id)).toBe(true);
+
+  // UPDATE removes the old token and indexes the new one
+  await api(`/posts/${created.id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content: "zqzqreplaceterm only now" }),
+  });
+  hits = await (await api("/posts?q=zqzqinsertterm")).json();
+  expect(hits.some((p: { id: number }) => p.id === created.id)).toBe(false);
+  hits = await (await api("/posts?q=zqzqreplaceterm")).json();
+  expect(hits.some((p: { id: number }) => p.id === created.id)).toBe(true);
+
+  // DELETE removes it from the index
+  await api(`/posts/${created.id}`, { method: "DELETE" });
+  hits = await (await api("/posts?q=zqzqreplaceterm")).json();
+  expect(hits.some((p: { id: number }) => p.id === created.id)).toBe(false);
+});
+
+test("search response rows carry exactly snippet and rank beyond the summary keys", async () => {
+  const created = await (await post("/posts", { title: "Snippet Shape", content: "zqzqshape term inside body" })).json();
+  const res = await (await api("/posts?q=zqzqshape")).json();
+  const row = res.find((p: { id: number }) => p.id === created.id);
+  expect(row).toBeTruthy();
+  expect(Object.keys(row).sort()).toEqual(
+    ["id", "status", "title", "updated_at", "word_count", "target_word_count", "snippet", "rank"].sort(),
+  );
+  expect(typeof row.rank).toBe("number");
+  expect(typeof row.snippet).toBe("string");
+  expect(row.snippet).toContain("<mark>");
+  expect(row.snippet.toLowerCase()).toContain("zqzqshape");
+});
+
+test("snippet comes from the title when the hit is in the title", async () => {
+  const created = await (await post("/posts", { title: "zqzqtitlehit word", content: "body without the term here" })).json();
+  const res = await (await api("/posts?q=zqzqtitlehit")).json();
+  const row = res.find((p: { id: number }) => p.id === created.id);
+  expect(row.snippet).toContain("<mark>zqzqtitlehit</mark>");
+  expect(row.snippet).not.toContain("body without");
+});
+
+test("search orders best-match first via rank, not updated_at", async () => {
+  const make = (n: number) =>
+    `The word zqzqrankterm appears here ${n} times: ${Array(n).fill("zqzqrankterm").join(" ")} and then some filler text to keep the document lengths comparable for both posts so bm25 ordering is predictable.`;
+  const older = await (await post("/posts", { title: "Older", content: make(3) })).json();
+  await Bun.sleep(5);
+  const newer = await (await post("/posts", { title: "Newer", content: make(1) })).json();
+
+  // unfiltered list still orders by updated_at: newer first
+  const list = await (await api("/posts")).json();
+  const ids = list.map((p: { id: number }) => p.id);
+  expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
+
+  // search orders by relevance: the 3× post first (lower rank = better)
+  const res = await (await api("/posts?q=zqzqrankterm")).json();
+  const resIds = res.map((p: { id: number }) => p.id);
+  expect(resIds.indexOf(older.id)).toBeLessThan(resIds.indexOf(newer.id));
+  expect(res.every((p: { rank: number }) => typeof p.rank === "number")).toBe(true);
+});
+
+test("multi-word queries are AND with case-insensitive prefix terms", async () => {
+  const a = await (await post("/posts", { title: "AND A", content: "zqzqandterm quantum leap in the lab" })).json();
+  const b = await (await post("/posts", { title: "AND B", content: "zqzqandterm only" })).json();
+  const c = await (await post("/posts", { title: "AND C", content: "leap only here" })).json();
+
+  // both words required (AND): a has both, b lacks quantum, c lacks both
+  const both = await (await api("/posts?q=zqzqandterm quantum")).json();
+  const bothIds = both.map((p: { id: number }) => p.id);
+  expect(bothIds).toContain(a.id);
+  expect(bothIds).not.toContain(b.id);
+  expect(bothIds).not.toContain(c.id);
+
+  // implicit trailing * prefix-matches; explicit trailing * is not double-starred
+  const pref = await (await api("/posts?q=zqzqandte")).json();
+  expect(pref.some((p: { id: number }) => p.id === a.id)).toBe(true);
+  const prefStar = await (await api("/posts?q=zqzqandte*")).json();
+  expect(prefStar.some((p: { id: number }) => p.id === a.id)).toBe(true);
+
+  // case-insensitive in both directions
+  const upper = await (await api("/posts?q=ZQZQANDTERM")).json();
+  expect(upper.some((p: { id: number }) => p.id === a.id)).toBe(true);
+});
+
+test("hostile search input returns 200 with an array, never 500", async () => {
+  for (const q of ['"', "AND", "foo NEAR bar)", "*"]) {
+    const res = await api(`/posts?q=${encodeURIComponent(q)}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(await res.json())).toBe(true);
+  }
+});
+
+test("empty or whitespace-only q returns the full unfiltered list, unchanged", async () => {
+  const plain = await (await api("/posts")).json();
+  const empty = await (await api("/posts?q=")).json();
+  const ws = await (await api("/posts?q=%20%20")).json();
+  expect(empty).toEqual(plain);
+  expect(ws).toEqual(plain);
+});
+
+test("a query matching nothing returns []", async () => {
+  const res = await (await api("/posts?q=zqzqno-such-term-xyzzy")).json();
+  expect(res).toEqual([]);
+});
+
+test("?search= alias returns the same rows as ?q=", async () => {
+  const created = await (await post("/posts", { title: "Alias Test", content: "zqzqaliasword inside" })).json();
+  const q = await (await api("/posts?q=zqzqaliasword")).json();
+  const s = await (await api("/posts?search=zqzqaliasword")).json();
+  expect(q.map((p: { id: number }) => p.id)).toEqual(s.map((p: { id: number }) => p.id));
+  expect(s[0].snippet).toContain("<mark>");
+});
+
+test("LIKE fallback search still produces snippet and rank", async () => {
+  const created = await (await post("/posts", { title: "Fallback Title", content: "zqzqfallbackterm appears in body" })).json();
+  const rows = likeSearchPosts("zqzqfallbackterm");
+  const row = rows.find((p: { id: number }) => p.id === created.id);
+  expect(row).toBeTruthy();
+  expect(typeof row.rank).toBe("number");
+  expect(row.snippet).toContain("<mark>");
+});
+
+test("buildFtsQuery appends a trailing * to each whitespace-separated term", () => {
+  expect(buildFtsQuery("quan")).toBe("quan*");
+  expect(buildFtsQuery("quantum leap")).toBe("quantum* leap*");
+  expect(buildFtsQuery("quan*")).toBe("quan*"); // no double star
+});
+
+test("app.js renders the search snippet under each hit and escapes HTML", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+  expect(js).toContain("post-snippet");
+  expect(js).toContain("renderSnippet");
+
+  const { renderSnippet } = loadSection<any>(js, "snippet (pure)", ["renderSnippet"]);
+  expect(renderSnippet("")).toBe("");
+  expect(renderSnippet('<mark>needle</mark> & <script>alert(1)</script>')).toContain("<mark>needle</mark>");
+  expect(renderSnippet('<mark>needle</mark> & <script>alert(1)</script>')).toContain("&lt;script&gt;");
+  expect(renderSnippet('<mark>needle</mark> & <script>alert(1)</script>')).not.toContain("<script>");
+});
+
+test("style.css styles the search snippet and its <mark> highlights", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const css = await res.text();
+  expect(css).toContain(".post-snippet");
+  expect(css).toContain(".post-snippet mark");
+  expect(css).toContain("grid-column");
 });

@@ -273,6 +273,25 @@ body.focus-mode .topbar {
   white-space: nowrap;
 }
 
+.post-snippet {
+  grid-column: 2 / -1;   /* sits under the title, spanning the title+time columns */
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.post-snippet mark {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text-strong);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 /* --- quiet room: topbar ------------------------------------------------- */
 
 .topbar {

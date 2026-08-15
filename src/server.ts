@@ -20,6 +20,7 @@ type Post = {
 // ─── db ────────────────────────────────────────────────────────────────────
 // Opened lazily so INKWELL_DB can be set by a test before the first request.
 let _db: Database | null = null;
+let ftsAvailable = false;
 
 function db(): Database {
   if (_db) return _db;
@@ -41,6 +42,28 @@ function db(): Database {
   } catch {
     // Column already exists
   }
+  try {
+    _db.run("CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5(title, content)");
+    ftsAvailable = true;
+  } catch {
+    ftsAvailable = false; // FTS5 not linked into this sqlite build → LIKE fallback everywhere
+  }
+  if (ftsAvailable) {
+    // Idempotent backfill: existing dbs get indexed once; reopens are no-ops.
+    _db.run(
+      "INSERT INTO posts_fts(rowid, title, content) SELECT id, title, content FROM posts WHERE id NOT IN (SELECT rowid FROM posts_fts)",
+    );
+    _db.run(`CREATE TRIGGER IF NOT EXISTS posts_ai AFTER INSERT ON posts BEGIN
+      INSERT INTO posts_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+    END`);
+    _db.run(`CREATE TRIGGER IF NOT EXISTS posts_ad AFTER DELETE ON posts BEGIN
+      DELETE FROM posts_fts WHERE rowid = old.id;
+    END`);
+    _db.run(`CREATE TRIGGER IF NOT EXISTS posts_au AFTER UPDATE ON posts BEGIN
+      DELETE FROM posts_fts WHERE rowid = old.id;
+      INSERT INTO posts_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+    END`);
+  }
   return _db;
 }
 
@@ -56,6 +79,139 @@ const wordCount = (content: string) =>
 
 const getPost = (id: number) =>
   db().query("SELECT * FROM posts WHERE id = ?").get(id) as Post | null;
+
+type SummaryRow = {
+  id: number;
+  title: string | null;
+  status: string;
+  updated_at: string;
+  word_count: number;
+  target_word_count: number;
+};
+
+type SearchRow = SummaryRow & { snippet: string; rank: number };
+
+const summarize = (p: Post): SummaryRow => ({
+  id: p.id,
+  title: p.title,
+  status: p.status,
+  updated_at: p.updated_at,
+  word_count: wordCount(p.content ?? ""),
+  target_word_count: p.target_word_count ?? 0,
+});
+
+/** Turns free text into an FTS5 query: each whitespace-separated term becomes a prefix term. */
+export function buildFtsQuery(raw: string): string {
+  return raw
+    .trim()
+    .split(/\s+/)
+    .map((term) => (term.endsWith("*") ? term : `${term}*`))
+    .join(" ");
+}
+
+const SEARCH_SQL = `
+  SELECT p.id, p.title, p.status, p.updated_at, p.target_word_count, p.content,
+         rank,
+         CASE WHEN snippet(posts_fts, 0, '<mark>', '</mark>', '…', 12) LIKE '%<mark>%'
+              THEN snippet(posts_fts, 0, '<mark>', '</mark>', '…', 12)
+              ELSE snippet(posts_fts, 1, '<mark>', '</mark>', '…', 12)
+         END AS snippet
+  FROM posts_fts
+  JOIN posts p ON p.id = posts_fts.rowid
+  WHERE posts_fts MATCH ?
+  ORDER BY rank, p.updated_at DESC, p.id DESC
+`;
+
+export function searchPosts(query: string): SearchRow[] {
+  if (ftsAvailable) {
+    try {
+      // Fresh prepare per call: FTS5 can carry stale snippet/query state across
+      // reused prepared statements (observed once in testing), so never cache this.
+      const rows = db().prepare(SEARCH_SQL).all(buildFtsQuery(query)) as (Post & {
+        rank: number;
+        snippet: string | null;
+      })[];
+      return rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        status: r.status,
+        updated_at: r.updated_at,
+        word_count: wordCount(r.content ?? ""),
+        target_word_count: r.target_word_count ?? 0,
+        snippet: r.snippet ?? "",
+        rank: r.rank,
+      }));
+    } catch {
+      // FTS5 rejected the query (lone `"`, `AND`, `*`, `foo NEAR bar)`, …) → LIKE fallback.
+      // The fallback produces the identical contract, so hostile input can never 500.
+    }
+  }
+  return likeSearchPosts(query);
+}
+
+function countOccurrences(src: string, lowerQuery: string): number {
+  let n = 0;
+  let i = 0;
+  const lower = src.toLowerCase();
+  while ((i = lower.indexOf(lowerQuery, i)) !== -1) {
+    n++;
+    i += lowerQuery.length;
+  }
+  return n;
+}
+
+function makeSnippet(src: string, lowerQuery: string): string {
+  const lower = src.toLowerCase();
+  const at = lower.indexOf(lowerQuery);
+  if (at === -1) return src.slice(0, 80);
+  const start = Math.max(0, at - 30);
+  const end = Math.min(src.length, at + lowerQuery.length + 90);
+  let window = src.slice(start, end);
+  if (start > 0) window = `…${window}`;
+  if (end < src.length) window = `${window}…`;
+  const out: string[] = [];
+  let i = 0;
+  let searchFrom = 0;
+  for (;;) {
+    const idx = window.toLowerCase().indexOf(lowerQuery, searchFrom);
+    if (idx === -1) {
+      out.push(window.slice(i));
+      break;
+    }
+    out.push(window.slice(i, idx), "<mark>", window.slice(idx, idx + lowerQuery.length), "</mark>");
+    i = idx + lowerQuery.length;
+    searchFrom = i;
+  }
+  return out.join("");
+}
+
+/** LIKE fallback: identical response contract, crude relevance rank (title matches double-weight). */
+export function likeSearchPosts(query: string): SearchRow[] {
+  const pattern = `%${query}%`;
+  const rows = db()
+    .query("SELECT * FROM posts WHERE title LIKE ? OR content LIKE ? ORDER BY updated_at DESC, id DESC")
+    .all(pattern, pattern) as Post[];
+  const lowerQuery = query.toLowerCase();
+  return rows
+    .map((p) => {
+      const title = p.title ?? "";
+      const content = p.content ?? "";
+      const titleHits = countOccurrences(title, lowerQuery);
+      const contentHits = countOccurrences(content, lowerQuery);
+      const src = titleHits > 0 ? title : content;
+      return {
+        id: p.id,
+        title: p.title,
+        status: p.status,
+        updated_at: p.updated_at,
+        word_count: wordCount(content),
+        target_word_count: p.target_word_count ?? 0,
+        snippet: makeSnippet(src, lowerQuery),
+        rank: -(2 * titleHits + contentHits),
+      };
+    })
+    .sort((a, b) => a.rank - b.rank || b.updated_at.localeCompare(a.updated_at) || b.id - a.id);
+}
 
 // ─── responses ─────────────────────────────────────────────────────────────
 const json = (body: unknown, status = 200) =>
@@ -202,29 +358,11 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
       const url = new URL(req.url);
       const query = url.searchParams.get("q") ?? url.searchParams.get("search") ?? "";
       const trimmed = query.trim();
-
-      let rows: Post[];
-      if (trimmed) {
-        const pattern = `%${trimmed}%`;
-        rows = db()
-          .query("SELECT * FROM posts WHERE title LIKE ? OR content LIKE ? ORDER BY updated_at DESC, id DESC")
-          .all(pattern, pattern) as Post[];
-      } else {
-        rows = db()
-          .query("SELECT * FROM posts ORDER BY updated_at DESC, id DESC")
-          .all() as Post[];
-      }
-
-      return json(
-        rows.map((p) => ({
-          id: p.id,
-          title: p.title,
-          status: p.status,
-          updated_at: p.updated_at,
-          word_count: wordCount(p.content ?? ""),
-          target_word_count: p.target_word_count ?? 0,
-        })),
-      );
+      if (trimmed) return json(searchPosts(trimmed));
+      const rows = db()
+        .query("SELECT * FROM posts ORDER BY updated_at DESC, id DESC")
+        .all() as Post[];
+      return json(rows.map(summarize));
     }
 
     if (method === "POST") {

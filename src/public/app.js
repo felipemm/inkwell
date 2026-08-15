@@ -94,6 +94,18 @@ function renderMarkdown(src) {
   return out.join('\n');
 }
 
+// --- snippet (pure) ------------------------------------------------------
+
+function renderSnippet(raw) {
+  if (!raw) return '';
+  return raw
+    .replace(/<mark>/g, '\u0001')
+    .replace(/<\/mark>/g, '\u0002')
+    .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    .replace(/\u0001/g, '<mark>')
+    .replace(/\u0002/g, '</mark>');
+}
+
 // --- view mode (pure) -----------------------------------------------------
 
 const VIEW_MODES = ['edit', 'split', 'preview'];
@@ -181,7 +193,10 @@ function renderList() {
     when.className = 'post-time';
     when.textContent = relTime(p.updated_at);
 
-    item.append(dot, title, when);
+    const snip = document.createElement('span');
+    snip.className = 'post-snippet';
+    snip.innerHTML = renderSnippet(p.snippet || '');
+    item.append(dot, title, when, snip);
     item.addEventListener('click', async () => {
       await selectPost(p.id);
       closePosts();
