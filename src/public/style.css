@@ -7,6 +7,7 @@
   --text-faint: #8b949e;
   --accent: #6ee7b7;
   --danger: #d97583;
+  --schedule: #e3b341;
   --serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
   --sans: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -35,6 +36,7 @@
   --text-faint: #635f56;
   --accent: #0f7b56;
   --danger: #b3353f;
+  --schedule: #8a5a00;
   --surface-1: #ffffff;
   --surface-2: #e9e5db;
   --surface-3: #ece8df;
@@ -739,6 +741,25 @@ kbd {
 }
 
 .history-actions .btn:disabled { opacity: 0.5; cursor: default; }
+
+/* --- scheduled publishing ------------------------------------------------- */
+
+.schedule-input {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.dot.scheduled {
+  background: var(--schedule);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--schedule) 55%, transparent);
+}
+
+.btn.is-scheduled { color: var(--schedule); }
 
 /* --- scrollbars --------------------------------------------------------- */
 

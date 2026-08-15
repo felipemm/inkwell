@@ -32,6 +32,8 @@ const ui = {
   historyRestore: el('history-restore'),
   historyMeta: el('history-meta'),
   historyClose: el('history-close'),
+  scheduleAt: el('schedule-at'),
+  scheduleBtn: el('schedule-btn'),
 };
 
 let posts = [];        // sidebar summaries, newest first
@@ -189,7 +191,7 @@ function renderList() {
     item.dataset.id = p.id;
 
     const dot = document.createElement('span');
-    dot.className = 'dot ' + (p.status === 'published' ? 'published' : 'draft');
+    dot.className = 'dot ' + dotClass(p.status);
     dot.title = p.status;
 
     const title = document.createElement('span');
@@ -226,6 +228,11 @@ function renderEditor() {
   ui.content.value = current.content || '';
   ui.publishBtn.textContent = current.status === 'published' ? 'unpublish' : 'publish';
   ui.publishBtn.classList.toggle('is-published', current.status === 'published');
+  ui.scheduleBtn.textContent = scheduleButtonLabel(current.status);
+  ui.scheduleBtn.classList.toggle('is-scheduled', current.status === 'scheduled');
+  ui.scheduleAt.value = current.status === 'scheduled' && current.publish_at
+    ? toLocalInputValue(current.publish_at)
+    : '';
   if (ui.targetWords) ui.targetWords.value = current.target_word_count ?? 0;
   updateWordCount();
   refreshPreview();
@@ -400,6 +407,29 @@ function renderDiffLines(ops) {
   }).join('\n');
 }
 
+// --- scheduled (pure) ------------------------------------------------------
+
+function dotClass(status) {
+  return status === 'published' ? 'published' : status === 'scheduled' ? 'scheduled' : 'draft';
+}
+
+function scheduleButtonLabel(status) {
+  return status === 'scheduled' ? 'cancel schedule' : 'schedule';
+}
+
+/** datetime-local value (local time, no seconds) for a UTC ISO timestamp. */
+function toLocalInputValue(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** UTC ISO timestamp for a datetime-local value ("2026-08-18T09:00"). */
+function toUtcIso(localValue) {
+  return localValue ? new Date(localValue).toISOString() : '';
+}
+
 // --- history (dom) -------------------------------------------------------
 
 let historyRevisions = [];
@@ -527,6 +557,20 @@ ui.publishBtn.addEventListener('click', async () => {
   if (!current) return;
   await flushSave();
   current = await api('POST', `/api/posts/${current.id}/publish`);
+  mergeSummary(current);
+  renderEditor();
+});
+
+ui.scheduleBtn.addEventListener('click', async () => {
+  if (!current) return;
+  await flushSave();
+  if (current.status === 'scheduled') {
+    current = await api('DELETE', `/api/posts/${current.id}/schedule`);
+  } else {
+    const value = ui.scheduleAt.value;
+    if (!value) { ui.scheduleAt.focus(); return; }
+    current = await api('POST', `/api/posts/${current.id}/schedule`, { publish_at: toUtcIso(value) });
+  }
   mergeSummary(current);
   renderEditor();
 });

@@ -13,6 +13,7 @@ type Post = {
   content: string;
   status: string;
   target_word_count: number;
+  publish_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -46,12 +47,18 @@ function db(): Database {
       content TEXT,
       status TEXT DEFAULT 'draft',
       target_word_count INTEGER DEFAULT 0,
+      publish_at TEXT,
       created_at TEXT,
       updated_at TEXT
     )
   `);
   try {
     _db.run("ALTER TABLE posts ADD COLUMN target_word_count INTEGER DEFAULT 0");
+  } catch {
+    // Column already exists
+  }
+  try {
+    _db.run("ALTER TABLE posts ADD COLUMN publish_at TEXT");
   } catch {
     // Column already exists
   }
@@ -102,6 +109,26 @@ const wordCount = (content: string) =>
 
 const getPost = (id: number) =>
   db().query("SELECT * FROM posts WHERE id = ?").get(id) as Post | null;
+
+/** Publishes every scheduled post whose publish_at has arrived. Due-ness is
+ *  decided by comparing timestamps at request time — no timers, no workers —
+ *  so a restart never loses a schedule and tests never wait. Returns the ids
+ *  published in this sweep, in ascending id order. */
+function sweepScheduled(): number[] {
+  const conn = db();
+  const cutoff = now();
+  const due = conn
+    .query(
+      "SELECT id FROM posts WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= ? ORDER BY id",
+    )
+    .all(cutoff) as { id: number }[];
+  if (due.length === 0) return [];
+  conn.run(
+    "UPDATE posts SET status = 'published', updated_at = ? WHERE status = 'scheduled' AND publish_at IS NOT NULL AND publish_at <= ?",
+    [cutoff, cutoff],
+  );
+  return due.map((r) => r.id);
+}
 
 /** Snapshots a post's pre-edit state. 'edit' snapshots coalesce: if the newest
  *  revision for this post is an 'edit' younger than 60s, it is overwritten
@@ -452,11 +479,19 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     return notFound();
   }
 
+  if (segments[1] === "scheduled") {
+    if (segments.length === 3 && segments[2] === "run" && method === "POST") {
+      return json({ published: sweepScheduled() });
+    }
+    return json({ error: "method not allowed" }, 405);
+  }
+
   if (segments[1] !== "posts") return notFound();
 
   // /api/posts
   if (segments.length === 2) {
     if (method === "GET") {
+      sweepScheduled();
       const url = new URL(req.url);
       const query = url.searchParams.get("q") ?? url.searchParams.get("search") ?? "";
       const trimmed = query.trim();
@@ -489,15 +524,47 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
   const id = Number(segments[2]);
   if (!Number.isInteger(id)) return notFound();
 
-  // /api/posts/:id/publish
+  // /api/posts/:id/publish — toggles draft ↔ published. Publishing a scheduled
+  // post publishes it now and cancels its schedule; unpublishing clears publish_at.
   if (segments.length === 4 && segments[3] === "publish") {
     if (method !== "POST") return json({ error: "method not allowed" }, 405);
     const post = getPost(id);
     if (!post) return notFound();
     const status = post.status === "published" ? "draft" : "published";
     snapshotPost(post, post.status === "published" ? "unpublish" : "publish");
-    db().run("UPDATE posts SET status = ?, updated_at = ? WHERE id = ?", [status, now(), id]);
+    db().run("UPDATE posts SET status = ?, publish_at = NULL, updated_at = ? WHERE id = ?", [status, now(), id]);
     return json(getPost(id));
+  }
+
+  // /api/posts/:id/schedule — POST sets a publish time; DELETE cancels it
+  if (segments.length === 4 && segments[3] === "schedule") {
+    const post = getPost(id);
+    if (!post) return notFound();
+
+    if (method === "POST") {
+      const body = await readBody(req);
+      const raw = body.publish_at;
+      if (typeof raw !== "string" || Number.isNaN(Date.parse(raw))) {
+        return json({ error: "publish_at must be a parseable ISO-8601 timestamp" }, 400);
+      }
+      const publishAt = new Date(raw).toISOString(); // normalize to UTC ISO
+      db().run(
+        "UPDATE posts SET status = 'scheduled', publish_at = ?, updated_at = ? WHERE id = ?",
+        [publishAt, now(), id],
+      );
+      return json(getPost(id));
+    }
+
+    if (method === "DELETE") {
+      if (post.status !== "scheduled") return json({ error: "post is not scheduled" }, 409);
+      db().run(
+        "UPDATE posts SET status = 'draft', publish_at = NULL, updated_at = ? WHERE id = ?",
+        [now(), id],
+      );
+      return json(getPost(id));
+    }
+
+    return json({ error: "method not allowed" }, 405);
   }
 
   // /api/posts/:id/stats
@@ -573,6 +640,7 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
 
   // /api/posts/:id
   if (segments.length === 3) {
+    if (method === "GET") sweepScheduled();
     const post = getPost(id);
     if (!post) return notFound();
 

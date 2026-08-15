@@ -153,6 +153,8 @@ test("unknown id returns 404 {error: 'not found'} on every route", async () => {
     api(`/posts/${missing}/revisions/1`),
     api(`/posts/${missing}/revisions/1/diff`),
     post(`/posts/${missing}/revisions/1/restore`),
+    post(`/posts/${missing}/schedule`),
+    api(`/posts/${missing}/schedule`, { method: "DELETE" }),
   ];
   for (const res of await Promise.all(routes)) {
     expect(res.status).toBe(404);
@@ -1320,4 +1322,253 @@ test("style.css styles the history panel and the diff", async () => {
   expect(css).toContain(".diff-add");
   expect(css).toContain(".diff-del");
   expect(css).toContain(".diff-ctx");
+});
+
+// ─── Scheduled publishing (spec: adws/prompts/03-scheduled-publishing.md) ──
+
+test("migrates a pre-schedule database in place and leaves existing rows valid", async () => {
+  const dbPath = join(tmpdir(), `inkwell-schedule-migrate-${Date.now()}-${process.pid}.db`);
+  const raw = new Database(dbPath, { create: true });
+  raw.run(`CREATE TABLE posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, content TEXT,
+    status TEXT DEFAULT 'draft', target_word_count INTEGER DEFAULT 0,
+    created_at TEXT, updated_at TEXT
+  )`);
+  raw.run("INSERT INTO posts (title, content, status, created_at, updated_at) VALUES ('Legacy', 'still here', 'draft', '2026-01-01', '2026-01-01')");
+  raw.close();
+
+  const prev = process.env.INKWELL_DB;
+  process.env.INKWELL_DB = dbPath;
+  closeDb(); // next request re-opens against the pre-schedule file and upgrades it
+  try {
+    const res = await api("/posts");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.length).toBe(1);
+    expect(data[0].title).toBe("Legacy");
+    expect(data[0].status).toBe("draft"); // the legacy row is still valid
+
+    const check = new Database(dbPath);
+    const cols = (check.query("PRAGMA table_info(posts)").all() as any[]).map((c) => c.name);
+    expect(cols).toContain("publish_at");
+    check.close();
+  } finally {
+    closeDb();
+    process.env.INKWELL_DB = prev;
+    for (const suffix of ["", "-shm", "-wal"]) rmSync(dbPath + suffix, { force: true });
+  }
+});
+
+test("POST /api/posts/:id/schedule sets status scheduled and stores UTC ISO", async () => {
+  const created = await (await post("/posts", { title: "Sched", content: "x" })).json();
+
+  // a full UTC ISO timestamp is stored unchanged (normalized to UTC ISO form)
+  const res = await post(`/posts/${created.id}/schedule`, { publish_at: "2999-01-01T13:05:00.000Z" });
+  expect(res.status).toBe(200);
+  const scheduled = await res.json();
+  expect(scheduled.status).toBe("scheduled");
+  expect(scheduled.publish_at).toBe("2999-01-01T13:05:00.000Z");
+
+  // a zone-less ISO string (interpreted in the server's local zone) is normalized to UTC
+  const res2 = await post(`/posts/${created.id}/schedule`, { publish_at: "2999-01-01T09:00" });
+  const scheduled2 = await res2.json();
+  expect(scheduled2.status).toBe("scheduled");
+  expect(scheduled2.publish_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  expect(new Date(scheduled2.publish_at).toISOString()).toBe(scheduled2.publish_at);
+
+  // the list summary carries the new state through status
+  const list = await (await api("/posts")).json();
+  expect(list.find((p: { id: number }) => p.id === created.id).status).toBe("scheduled");
+});
+
+test("POST schedule with missing, unparseable, or non-string publish_at returns 400 {error}", async () => {
+  const created = await (await post("/posts", { title: "Bad", content: "x" })).json();
+  for (const body of [{}, { publish_at: "not-a-date" }, { publish_at: 12345 }, { publish_at: null }]) {
+    const res = await post(`/posts/${created.id}/schedule`, body);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBeTruthy();
+  }
+  const after = await (await api(`/posts/${created.id}`)).json();
+  expect(after.status).toBe("draft");
+  expect(after.publish_at).toBeNull();
+});
+
+test("DELETE /api/posts/:id/schedule returns the post to draft and nulls publish_at; 409 when not scheduled", async () => {
+  const created = await (await post("/posts", { title: "Cancel", content: "x" })).json();
+  await post(`/posts/${created.id}/schedule`, { publish_at: "2999-01-01T00:00:00.000Z" });
+
+  const res = await api(`/posts/${created.id}/schedule`, { method: "DELETE" });
+  expect(res.status).toBe(200);
+  const back = await res.json();
+  expect(back.status).toBe("draft");
+  expect(back.publish_at).toBeNull();
+
+  // not scheduled → 409 {error}
+  const again = await api(`/posts/${created.id}/schedule`, { method: "DELETE" });
+  expect(again.status).toBe(409);
+  expect((await again.json()).error).toBeTruthy();
+
+  // published → also 409
+  await post(`/posts/${created.id}/publish`);
+  const onPublished = await api(`/posts/${created.id}/schedule`, { method: "DELETE" });
+  expect(onPublished.status).toBe(409);
+});
+
+test("POST /api/scheduled/run publishes due posts, keeps publish_at, and is idempotent", async () => {
+  const due = await (await post("/posts", { title: "Due", content: "x" })).json();
+  await post(`/posts/${due.id}/schedule`, { publish_at: new Date(Date.now() - 60_000).toISOString() }); // already due
+  const future = await (await post("/posts", { title: "Future", content: "y" })).json();
+  await post(`/posts/${future.id}/schedule`, { publish_at: "2999-01-01T00:00:00.000Z" });
+  const control = await (await post("/posts", { title: "Control", content: "z" })).json();
+
+  const r1 = await (await post("/scheduled/run")).json();
+  expect(r1.published).toContain(due.id);
+  expect(r1.published).not.toContain(future.id);
+
+  // idempotent: a second call immediately after publishes nothing
+  const r2 = await (await post("/scheduled/run")).json();
+  expect(r2).toEqual({ published: [] });
+
+  const dueNow = await (await api(`/posts/${due.id}`)).json();
+  expect(dueNow.status).toBe("published");
+  expect(dueNow.publish_at).toBeTruthy(); // kept as the record of when
+
+  const futureNow = await (await api(`/posts/${future.id}`)).json();
+  expect(futureNow.status).toBe("scheduled"); // far future: nothing moved
+
+  const controlNow = await (await api(`/posts/${control.id}`)).json();
+  expect(controlNow.status).toBe("draft"); // non-scheduled posts never move
+
+  // non-POST methods on /api/scheduled/run are 405
+  const bad = await api("/scheduled/run");
+  expect(bad.status).toBe(405);
+});
+
+test("GET /api/posts and GET /api/posts/:id sweep due posts first, so the list is never stale", async () => {
+  const p = await (await post("/posts", { title: "SweepOnRead", content: "x" })).json();
+  await post(`/posts/${p.id}/schedule`, { publish_at: new Date(Date.now() - 60_000).toISOString() });
+
+  // the plain list already shows it published — no explicit sweep call
+  const list = await (await api("/posts")).json();
+  expect(list.find((s: { id: number }) => s.id === p.id).status).toBe("published");
+
+  // search results use the same GET /api/posts route, so they are not stale either
+  const p2 = await (await post("/posts", { title: "SweepOnReadSearch", content: "y" })).json();
+  await post(`/posts/${p2.id}/schedule`, { publish_at: new Date(Date.now() - 60_000).toISOString() });
+  const hits = await (await api("/posts?q=SweepOnReadSearch")).json();
+  expect(hits.find((s: { id: number }) => s.id === p2.id).status).toBe("published");
+
+  // GET /api/posts/:id sweeps before reading
+  const p3 = await (await post("/posts", { title: "SweepOnReadSingle", content: "z" })).json();
+  await post(`/posts/${p3.id}/schedule`, { publish_at: new Date(Date.now() - 60_000).toISOString() });
+  const fetched = await (await api(`/posts/${p3.id}`)).json();
+  expect(fetched.status).toBe("published");
+});
+
+test("publish toggle cancels a schedule; unpublishing clears publish_at", async () => {
+  const created = await (await post("/posts", { title: "Toggle", content: "x" })).json();
+  await post(`/posts/${created.id}/schedule`, { publish_at: "2999-01-01T00:00:00.000Z" });
+
+  // publishing a scheduled post publishes it now and cancels the schedule
+  const published = await (await post(`/posts/${created.id}/publish`)).json();
+  expect(published.status).toBe("published");
+  expect(published.publish_at).toBeNull();
+
+  // unpublishing clears publish_at too
+  const unpublished = await (await post(`/posts/${created.id}/publish`)).json();
+  expect(unpublished.status).toBe("draft");
+  expect(unpublished.publish_at).toBeNull();
+
+  // a post swept to published keeps publish_at as the record of when
+  const due = await (await post("/posts", { title: "DueToggle", content: "y" })).json();
+  await post(`/posts/${due.id}/schedule`, { publish_at: new Date(Date.now() - 60_000).toISOString() });
+  await post("/scheduled/run");
+  const dueNow = await (await api(`/posts/${due.id}`)).json();
+  expect(dueNow.status).toBe("published");
+  expect(dueNow.publish_at).toBeTruthy();
+});
+
+test("GET /api/posts/:id includes publish_at; the list summary shape is unchanged", async () => {
+  const created = await (await post("/posts", { title: "Shape", content: "x" })).json();
+  await post(`/posts/${created.id}/schedule`, { publish_at: "2999-01-01T00:00:00.000Z" });
+
+  // the full post carries publish_at
+  const full = await (await api(`/posts/${created.id}`)).json();
+  expect(full.publish_at).toBe("2999-01-01T00:00:00.000Z");
+  expect(full.status).toBe("scheduled");
+
+  // the summary keeps its exact key set — status alone carries the new state
+  const list = await (await api("/posts")).json();
+  const summary = list.find((p: { id: number }) => p.id === created.id);
+  expect(Object.keys(summary).sort()).toEqual(
+    ["id", "status", "title", "updated_at", "word_count", "target_word_count"].sort(),
+  );
+  expect(summary.status).toBe("scheduled");
+});
+
+test("index.html contains the schedule control in the editor footer", async () => {
+  const res = await fetch(`${base}/index.html`);
+  expect(res.status).toBe(200);
+  const html = await res.text();
+  expect(html).toContain('id="schedule-at"');
+  expect(html).toContain('id="schedule-btn"');
+  expect(html).toContain('type="datetime-local"');
+  // the control lives in the editor footer (last </footer> in the document)
+  const footer = html.slice(html.indexOf('<footer class="footer">'), html.lastIndexOf("</footer>"));
+  expect(footer).toContain('id="schedule-at"');
+  expect(footer).toContain('id="schedule-btn"');
+});
+
+test("scheduled helpers: dotClass, scheduleButtonLabel, toLocalInputValue, toUtcIso (pure section)", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+
+  const { dotClass, scheduleButtonLabel, toLocalInputValue, toUtcIso } = loadSection<any>(js, "scheduled (pure)", [
+    "dotClass",
+    "scheduleButtonLabel",
+    "toLocalInputValue",
+    "toUtcIso",
+  ]);
+
+  expect(dotClass("published")).toBe("published");
+  expect(dotClass("scheduled")).toBe("scheduled");
+  expect(dotClass("draft")).toBe("draft");
+  expect(dotClass("weird")).toBe("draft");
+
+  expect(scheduleButtonLabel("scheduled")).toBe("cancel schedule");
+  expect(scheduleButtonLabel("draft")).toBe("schedule");
+  expect(scheduleButtonLabel("published")).toBe("schedule");
+
+  // datetime-local round trip: display local, send UTC, and the instant survives
+  const iso = "2026-08-18T13:05:00.000Z";
+  const local = toLocalInputValue(iso);
+  expect(local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  expect(new Date(local).toISOString()).toBe(iso);
+  expect(toLocalInputValue("garbage")).toBe("");
+
+  const utc = toUtcIso("2026-08-18T13:05");
+  expect(utc).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  expect(toLocalInputValue(utc)).toBe("2026-08-18T13:05"); // minutes survive the round trip
+  expect(toUtcIso("")).toBe("");
+});
+
+test("app.js wires the schedule control and marks scheduled posts in the list", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+  expect(js).toContain("scheduleAt");
+  expect(js).toContain("scheduleBtn");
+  expect(js).toContain("dotClass");
+  expect(js).toContain("/schedule");
+  expect(js).toContain("cancel schedule");
+});
+
+test("style.css styles the scheduled dot and the schedule control", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const css = await res.text();
+  expect(css).toContain(".dot.scheduled");
+  expect(css).toContain(".schedule-input");
+  expect(css).toContain("--schedule:");
 });
