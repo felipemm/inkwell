@@ -751,7 +751,7 @@ window.addEventListener('beforeunload', () => {
 // --- theme ----------------------------------------------------------------
 
 const THEME_KEY = 'inkwell-theme';
-const themeBtn = el('theme-toggle');
+const themeSelect = el('theme-select');
 
 function availableThemes() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--themes');
@@ -771,24 +771,31 @@ function applyTheme(name, themes) {
     document.documentElement.setAttribute('data-theme', name);
   }
   localStorage.setItem(THEME_KEY, name);
-  if (themeBtn) {
-    const next = themes[(themes.indexOf(name) + 1) % themes.length];
-    themeBtn.textContent = next === 'light' ? '☀' : '☾';
-    themeBtn.title = `Switch to ${next} theme`;
-    themeBtn.setAttribute('aria-label', `Switch to ${next} theme`);
+  if (themeSelect) themeSelect.value = name;
+}
+
+function setTheme(name, themes) {
+  if (themes.includes(name)) applyTheme(name, themes);
+}
+
+function populateThemeSelect(themes) {
+  if (!themeSelect) return;
+  themeSelect.replaceChildren();
+  for (const name of themes) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name.charAt(0).toUpperCase() + name.slice(1);
+    themeSelect.appendChild(opt);
   }
 }
 
 (function initTheme() {
   const themes = availableThemes();
+  populateThemeSelect(themes);
   const stored = localStorage.getItem(THEME_KEY);
   const startTheme = stored && themes.includes(stored) ? stored : themes[0];
   applyTheme(startTheme, themes);
-  themeBtn?.addEventListener('click', () => {
-    const cur = currentTheme(themes);
-    const next = themes[(themes.indexOf(cur) + 1) % themes.length];
-    applyTheme(next, themes);
-  });
+  themeSelect?.addEventListener('change', (e) => setTheme(e.target.value, themes));
 })();
 
 // --- boot -----------------------------------------------------------------

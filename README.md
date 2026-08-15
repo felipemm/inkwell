@@ -37,7 +37,7 @@ An interactive keyboard shortcuts modal is accessible via the More menu's `short
 Inkwell opens as a quiet room: one centered column of text, no sidebar, no button strips. Everything else waits in two unobtrusive menus and gets out of the way after use.
 
 - **Posts drawer** (`☰` button or `Cmd+P` / `Ctrl+P`): slides in from the left with the search filter (`#search-input`), `+ new`, the post list, and the total post count. It closes on `Esc`, on a click outside, or after opening a post / creating a new one.
-- **More menu** (`⋯` button): a popover holding the theme toggle (☀/☾), text size (`A−` / `A+`), the word goal, the view-mode switch, focus mode, keyboard shortcuts, publish/unpublish, and delete.
+- **More menu** (`⋯` button): a popover holding the theme picker (dark / light / sepia / forest / midnight), text size (`A−` / `A+`), the word goal, the view-mode switch, focus mode, keyboard shortcuts, publish/unpublish, and delete.
 - **Editor footer**: readouts only — word count, reading time (`N min read`), and auto-save status (`saved`/`saving`).
 
 ## View Modes

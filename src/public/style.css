@@ -25,7 +25,7 @@
   --editor-max-width: 1118px;
   --editor-font: var(--serif);
 
-  --themes: dark light;
+  --themes: dark light sepia forest midnight;
 }
 
 [data-theme="light"] {
@@ -47,6 +47,69 @@
   --editor-surface: #fcfbf7;
   --overlay: rgba(60, 55, 45, 0.35);
   --shadow-modal: 0 12px 32px rgba(60, 55, 45, 0.25);
+}
+
+[data-theme="sepia"] {
+  --bg: #f4ecd8;
+  --bg-sidebar: #ece1c6;
+  --border: #d6c6a3;
+  --text: #3d3424;
+  --text-dim: #5c5140;
+  --text-faint: #7a6f5c;
+  --accent: #9c5b2c;
+  --danger: #a03a2e;
+  --schedule: #8a6d1f;
+  --surface-1: #fbf6e9;
+  --surface-2: #efe5cc;
+  --surface-3: #f0e6d0;
+  --surface-inset: #e7dcc0;
+  --text-strong: #241e12;
+  --border-strong: #c4b18a;
+  --editor-surface: #faf5e8;
+  --overlay: rgba(70, 55, 25, 0.35);
+  --shadow-modal: 0 12px 32px rgba(70, 55, 25, 0.25);
+}
+
+[data-theme="forest"] {
+  --bg: #0f1a12;
+  --bg-sidebar: #0a130c;
+  --border: #27402f;
+  --text: #c9d6c9;
+  --text-dim: #9db0a0;
+  --text-faint: #7f9482;
+  --accent: #8fd6a4;
+  --danger: #d97583;
+  --schedule: #e3b341;
+  --surface-1: #142318;
+  --surface-2: #182a1d;
+  --surface-3: #17261b;
+  --surface-inset: #0d1810;
+  --text-strong: #e6f0e6;
+  --border-strong: #38543f;
+  --editor-surface: #132117;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="midnight"] {
+  --bg: #0b1020;
+  --bg-sidebar: #070b18;
+  --border: #26324f;
+  --text: #c3cbe0;
+  --text-dim: #98a2bd;
+  --text-faint: #7c87a5;
+  --accent: #8ab4ff;
+  --danger: #e0828f;
+  --schedule: #e6c15c;
+  --surface-1: #101830;
+  --surface-2: #141d38;
+  --surface-3: #131b33;
+  --surface-inset: #0a101f;
+  --text-strong: #e2e8f8;
+  --border-strong: #3a4768;
+  --editor-surface: #0f162b;
+  --overlay: rgba(0, 0, 0, 0.65);
+  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -578,11 +641,6 @@ body[data-view-mode="split"] .title {
 .btn:hover { color: var(--text); background: var(--surface-2); }
 .btn.active, .btn.is-published { color: var(--accent); }
 .btn-danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
-
-#theme-toggle {
-  font-size: 14px;
-  line-height: 1;
-}
 
 .empty {
   margin: auto;

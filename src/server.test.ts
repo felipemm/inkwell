@@ -819,22 +819,31 @@ test("style.css contains styles for brand icon, brand alignment, and list-head c
   expect(css).toContain("align-items: center");
 });
 
-test("theme tokens, light mode, and theme toggle controls are present", async () => {
+test("theme picker, five themes, and persistence are present", async () => {
   const htmlRes = await fetch(`${base}/index.html`);
   const html = await htmlRes.text();
-  expect(html).toContain('id="theme-toggle"');
+  expect(html).toContain('id="theme-select"');
   expect(html).toContain("inkwell-theme");
+  expect(html).toContain('<option value="dark">Dark</option>');
+  expect(html).toContain('<option value="sepia">Sepia</option>');
+  expect(html).toContain('<option value="midnight">Midnight</option>');
 
   const cssRes = await fetch(`${base}/style.css`);
   const css = await cssRes.text();
-  expect(css).toContain("--themes: dark light");
+  expect(css).toContain("--themes: dark light sepia forest midnight");
   expect(css).toContain('[data-theme="light"]');
+  expect(css).toContain('[data-theme="sepia"]');
+  expect(css).toContain('[data-theme="forest"]');
+  expect(css).toContain('[data-theme="midnight"]');
 
   const jsRes = await fetch(`${base}/app.js`);
   const js = await jsRes.text();
   expect(js).toContain("inkwell-theme");
   expect(js).toContain("availableThemes");
   expect(js).toContain("applyTheme");
+  expect(js).toContain("populateThemeSelect");
+  expect(js).toContain("setTheme");
+  expect(js).toContain("theme-select");
 });
 
 // ─── FTS5 search (spec: adws/prompts/01-fts5-search.md) ────────────────────
