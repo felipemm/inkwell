@@ -392,12 +392,13 @@ function updateGoal() {
 
 // --- quiet room: type width -------------------------------------------------
 
-const TYPE_WIDTHS = { narrow: 560, medium: 720, wide: 960 };
+const TYPE_WIDTHS = { narrow: 640, medium: 860, wide: 'calc(100% - 96px)' };
 const TYPE_WIDTH_KEY = 'inkwell-type-width';
 let typeWidth = 'medium';
 
 function applyTypeWidth() {
-  document.documentElement.style.setProperty('--editor-max-width', `${TYPE_WIDTHS[typeWidth]}px`);
+  const v = TYPE_WIDTHS[typeWidth];
+  document.documentElement.style.setProperty('--editor-max-width', typeof v === 'number' ? `${v}px` : v);
   for (const btn of document.querySelectorAll('.width-btn')) {
     const on = btn.dataset.width === typeWidth;
     btn.classList.toggle('active', on);

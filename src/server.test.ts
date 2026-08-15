@@ -378,6 +378,20 @@ test("style.css contains focus-mode styles", async () => {
   expect(text).toContain("body.focus-mode .footer");
 });
 
+test("style.css contains editable surface styles", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain("--editor-surface");
+});
+
+test("style.css hides scrollbars", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain("scrollbar-width: none");
+});
+
 test("app.js contains focus mode handlers and shortcut listeners", async () => {
   const res = await fetch(`${base}/app.js`);
   expect(res.status).toBe(200);
@@ -432,6 +446,7 @@ test("app.js contains reading time calculation and writing goal logic", async ()
   expect(text).toContain("setFontSize");
   expect(text).toContain("target_word_count");
   expect(text).toContain("TYPE_WIDTHS");
+  expect(text).toContain("calc(100% - 96px)");
   expect(text).toContain("setTypeWidth");
   expect(text).toContain("applyTypeWidth");
 });

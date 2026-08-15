@@ -18,8 +18,7 @@
   --surface-inset: #0b0f15;
   --text-strong: #e6edf3;
   --border-strong: #3d4652;
-  --scrollbar-thumb: #343d4d;
-  --scrollbar-thumb-hover: #455062;
+  --editor-surface: #141b26;
   --overlay: rgba(0, 0, 0, 0.65);
   --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
   --editor-font-size: 18px;
@@ -44,8 +43,7 @@
   --surface-inset: #e7e3d9;
   --text-strong: #1a1815;
   --border-strong: #c4beb1;
-  --scrollbar-thumb: #c8c2b4;
-  --scrollbar-thumb-hover: #a89f8e;
+  --editor-surface: #fcfbf7;
   --overlay: rgba(60, 55, 45, 0.35);
   --shadow-modal: 0 12px 32px rgba(60, 55, 45, 0.25);
 }
@@ -74,17 +72,7 @@ body.focus-mode .sidebar {
 }
 
 body.focus-mode .footer {
-  opacity: 0.3;
-  transition: opacity 0.2s ease;
-}
-
-body.focus-mode .footer:hover {
-  opacity: 1;
-}
-
-body.focus-mode .topbar {
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 
 /* --- sidebar ------------------------------------------------------------ */
@@ -393,7 +381,7 @@ body.focus-mode .topbar {
   margin: 0 auto;
   padding: 0 40px;
   border: 0;
-  background: transparent;
+  background: var(--editor-surface);
   color: var(--text);
   font-family: var(--serif);
 }
@@ -771,9 +759,7 @@ kbd {
 
 .btn.is-scheduled { color: var(--schedule); }
 
-/* --- scrollbars --------------------------------------------------------- */
+/* --- scrollbars: hidden, scrolling still works --------------------------- */
 
-::-webkit-scrollbar { width: 9px; }
-::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; } /* Firefox */
