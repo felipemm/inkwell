@@ -20,19 +20,24 @@ bun test            # end-to-end API suite against a temp db
 ## Keyboard Shortcuts
 
 - `Cmd+N` / `Ctrl+N`: Create new post
+- `Cmd+P` / `Ctrl+P`: Open posts panel
 - `Cmd+S` / `Ctrl+S`: Save current post
 - `Cmd+Enter` / `Ctrl+Enter`: Cycle view mode (edit → split → preview)
+- `Cmd++` / `Ctrl++`: Increase font size
+- `Cmd+-` / `Ctrl+-`: Decrease font size
 - `Cmd+Shift+F` / `Ctrl+Shift+F`: Toggle focus mode
 - `?` or `Cmd+/` / `Ctrl+/`: Open/toggle keyboard shortcuts help modal
-- `Esc`: Close keyboard shortcuts help modal / exit focus mode
+- `Esc`: Close the shortcuts modal, posts drawer, or More menu / exit focus mode
 
-An interactive keyboard shortcuts modal is accessible via the `shortcuts` footer button or `?` / `Cmd+/` shortcut.
+An interactive keyboard shortcuts modal is accessible via the More menu's `shortcuts` button or `?` / `Cmd+/` shortcut.
 
-## Sidebar UI
+## Quiet Room Layout
 
-- **Search Filter**: Includes a search text input (`#search-input`) above the post list to filter posts by title and content as you type, with a clear button (`#search-clear`) to restore the full list.
-- **Sidebar Footer**: Displays total post count and a theme toggle icon button (☀/☾) that switches between dark and light themes.
-- **Editor Footer**: Displays active post word count and auto-save status (`saved`/`saving`), alongside post controls (focus mode toggle, keyboard shortcuts help, view-mode switch, publish/unpublish toggle, and delete post action).
+Inkwell opens as a quiet room: one centered column of text, no sidebar, no button strips. Everything else waits in two unobtrusive menus and gets out of the way after use.
+
+- **Posts drawer** (`☰` button or `Cmd+P` / `Ctrl+P`): slides in from the left with the search filter (`#search-input`), `+ new`, the post list, and the total post count. It closes on `Esc`, on a click outside, or after opening a post / creating a new one.
+- **More menu** (`⋯` button): a popover holding the theme toggle (☀/☾), text size (`A−` / `A+`), the word goal, the view-mode switch, focus mode, keyboard shortcuts, publish/unpublish, and delete.
+- **Editor footer**: readouts only — word count, reading time (`N min read`), and auto-save status (`saved`/`saving`).
 
 ## View Modes
 
@@ -40,5 +45,5 @@ An interactive keyboard shortcuts modal is accessible via the `shortcuts` footer
 - **split**: editor on the left, live-rendered markdown preview on the right, with a divider and `MARKDOWN` / `PREVIEW` pane labels; the preview updates on every keystroke.
 - **preview**: rendered output only.
 
-Cycle with `Cmd+Enter` / `Ctrl+Enter` or click the footer `mode-switch` buttons. The chosen mode persists while switching posts. Below ~860px viewport width, split mode stacks the panes vertically.
+Cycle with `Cmd+Enter` / `Ctrl+Enter` or use the mode switch inside the More menu (`⋯`). The chosen mode persists while switching posts. Below ~860px viewport width, split mode stacks the panes vertically.
 

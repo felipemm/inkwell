@@ -21,6 +21,7 @@
   --scrollbar-thumb-hover: #455062;
   --overlay: rgba(0, 0, 0, 0.65);
   --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --editor-font-size: 18px;
 
   --themes: dark light;
 }
@@ -78,6 +79,11 @@ body.focus-mode .footer:hover {
   opacity: 1;
 }
 
+body.focus-mode .topbar {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* --- sidebar ------------------------------------------------------------ */
 
 .sidebar {
@@ -124,7 +130,9 @@ body.focus-mode .footer:hover {
 .new-btn:focus-visible,
 .search-input:focus-visible,
 .close-btn:focus-visible,
-.post-item:focus-visible {
+.post-item:focus-visible,
+.icon-btn:focus-visible,
+.goal-input:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent);
   outline-offset: 1px;
 }
@@ -265,6 +273,79 @@ body.focus-mode .footer:hover {
   white-space: nowrap;
 }
 
+/* --- quiet room: topbar ------------------------------------------------- */
+
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px;
+  z-index: 400;
+  pointer-events: none; /* empty bar never blocks the editor */
+  transition: opacity 0.2s ease;
+}
+.topbar .icon-btn { pointer-events: auto; }
+.icon-btn {
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 15px; line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.icon-btn:hover { color: var(--text); background: var(--surface-2); }
+
+/* --- quiet room: drawer ------------------------------------------------- */
+
+.drawer {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: 264px;
+  flex: none;               /* overrides .sidebar flex basis */
+  z-index: 600;
+  transform: translateX(-100%);
+  visibility: hidden;
+  opacity: 0;
+  box-shadow: var(--shadow-modal);
+  transition: transform 0.22s ease, opacity 0.22s ease, visibility 0.22s ease;
+}
+.drawer.open { transform: none; visibility: visible; opacity: 1; }
+
+/* --- quiet room: popover ------------------------------------------------ */
+
+.popover {
+  position: fixed; top: 46px; right: 12px;
+  width: 264px;
+  z-index: 700;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-modal);
+  padding: 8px;
+  opacity: 0; visibility: hidden;
+  transform: translateY(-6px) scale(0.98);
+  transform-origin: top right;
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s ease;
+}
+.popover.open { opacity: 1; visibility: visible; transform: none; }
+.menu-section { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+.menu-section:last-child { border-bottom: 0; }
+.menu-heading { margin: 0 0 8px; font-family: var(--sans); font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint); }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px; }
+.menu-label { font-size: 13px; color: var(--text-dim); }
+.font-row { display: inline-flex; align-items: center; gap: 6px; }
+.goal-input { width: 64px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text); font-family: inherit; font-size: 12.5px; }
+.goal-progress { min-width: 34px; text-align: right; }
+.goal-met { color: var(--accent); }
+#more-menu .mode-switch { width: 100%; justify-content: space-between; margin-bottom: 8px; }
+
+/* --- quiet room: motion ------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer, .popover, .footer, .topbar, .icon-btn { transition: none !important; }
+}
+
 /* --- editor ------------------------------------------------------------- */
 
 .editor {
@@ -287,7 +368,7 @@ body.focus-mode .footer:hover {
 }
 
 .title {
-  padding-top: 48px;
+  padding-top: 64px;
   padding-bottom: 18px;
   font-size: 30px;
   font-weight: 500;
@@ -296,9 +377,9 @@ body.focus-mode .footer:hover {
 
 .content {
   flex: 1;
-  padding-bottom: 40px;
-  font-size: 18px;
-  line-height: 1.7;
+  padding-bottom: 56px;
+  font-size: var(--editor-font-size, 18px);
+  line-height: 1.8;
   resize: none;
   overflow-y: auto;
 }
@@ -308,9 +389,9 @@ body.focus-mode .footer:hover {
 
 .preview {
   flex: 1;
-  padding-bottom: 40px;
-  font-size: 18px;
-  line-height: 1.7;
+  padding-bottom: 56px;
+  font-size: var(--editor-font-size, 18px);
+  line-height: 1.8;
   overflow-y: auto;
 }
 

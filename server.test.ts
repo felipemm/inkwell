@@ -377,23 +377,58 @@ test("creates post with target_word_count and updates it via PUT", async () => {
   expect(item.target_word_count).toBe(1000);
 });
 
-test("index.html omits writing goal, reading time, and font size elements", async () => {
+test("index.html contains writing goal, reading time, and font size elements", async () => {
   const res = await fetch(`${base}/index.html`);
   expect(res.status).toBe(200);
   const text = await res.text();
-  expect(text).not.toContain('id="target-words"');
-  expect(text).not.toContain('id="reading-time"');
-  expect(text).not.toContain('id="goal-container"');
+  expect(text).toContain('id="target-words"');
+  expect(text).toContain('id="reading-time"');
+  expect(text).toContain('id="font-increase"');
+  expect(text).toContain('id="font-decrease"');
   expect(text).toContain('id="word-count"');
 });
 
-test("app.js omits reading time calculation and writing goal logic", async () => {
+test("app.js contains reading time calculation and writing goal logic", async () => {
   const res = await fetch(`${base}/app.js`);
   expect(res.status).toBe(200);
   const text = await res.text();
-  expect(text).not.toContain("calcReadingTime");
-  expect(text).not.toContain("goalProgress");
-  expect(text).not.toContain("goal-met");
+  expect(text).toContain("calcReadingTime");
+  expect(text).toContain("goalProgress");
+  expect(text).toContain("setFontSize");
+  expect(text).toContain("target_word_count");
+});
+
+test("index.html contains the quiet-room chrome", async () => {
+  const res = await fetch(`${base}/index.html`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain('id="posts-btn"');
+  expect(text).toContain('id="more-btn"');
+  expect(text).toContain('id="posts-drawer"');
+  expect(text).toContain('id="more-menu"');
+  expect(text).toContain('class="sidebar drawer"');
+  expect(text).toContain('class="popover"');
+});
+
+test("app.js opens and closes the posts drawer and more menu", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain("openPosts");
+  expect(text).toContain("closePosts");
+  expect(text).toContain("openMore");
+  expect(text).toContain("closeMore");
+  expect(text).toContain("e.key.toLowerCase() === 'p'");
+});
+
+test("style.css contains quiet-room drawer and popover styles", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain(".drawer");
+  expect(text).toContain(".popover");
+  expect(text).toContain("translateX(-100%)");
+  expect(text).toContain("prefers-reduced-motion");
 });
 
 test("GET /api/posts?q= filters posts by title or content (case-insensitive)", async () => {

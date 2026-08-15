@@ -10,7 +10,12 @@
 </head>
 <body>
 
-<aside class="sidebar">
+<header class="topbar">
+  <button id="posts-btn" class="icon-btn" type="button" aria-label="Posts" title="Posts (⌘P)">☰</button>
+  <button id="more-btn" class="icon-btn" type="button" aria-label="More" title="More">⋯</button>
+</header>
+
+<aside id="posts-drawer" class="sidebar drawer" aria-hidden="true">
   <header class="sidebar-head">
     <h1 class="brand">
       <svg class="brand-icon" width="36" height="36" viewBox="0 0 32 32" aria-hidden="true">
@@ -32,7 +37,6 @@
   <nav id="post-list" class="post-list" aria-label="Posts"></nav>
   <footer class="sidebar-footer">
     <span id="total-posts" class="meta">0 posts</span>
-    <button id="theme-toggle" class="btn" type="button" aria-label="Switch theme"></button>
   </footer>
 </aside>
 
@@ -50,21 +54,58 @@
   </div>
   <footer class="footer">
     <span id="word-count" class="meta">0 words</span>
+    <span id="reading-time" class="meta"></span>
     <span id="save-state" class="meta save-state">saved</span>
     <span class="spacer"></span>
-    <button id="focus-toggle" class="btn" type="button">focus</button>
-    <button id="shortcuts-toggle" class="btn" type="button">shortcuts</button>
+  </footer>
+</main>
+
+<p id="empty" class="empty" hidden>No posts yet.</p>
+
+<div id="more-menu" class="popover" role="dialog" aria-hidden="true">
+  <section class="menu-section">
+    <h3 class="menu-heading">Appearance</h3>
+    <div class="menu-row">
+      <span class="menu-label">Theme</span>
+      <button id="theme-toggle" class="btn" type="button" aria-label="Switch theme"></button>
+    </div>
+    <div class="menu-row">
+      <span class="menu-label">Text size</span>
+      <span class="font-row">
+        <button id="font-decrease" class="btn" type="button" aria-label="Decrease font size">A−</button>
+        <span id="font-size-label" class="meta">18px</span>
+        <button id="font-increase" class="btn" type="button" aria-label="Increase font size">A+</button>
+      </span>
+    </div>
+  </section>
+  <section class="menu-section">
+    <h3 class="menu-heading">Writing</h3>
+    <div class="menu-row" id="goal-container">
+      <span class="menu-label">Goal</span>
+      <input id="target-words" class="goal-input" type="number" min="0" placeholder="words" aria-label="Word goal">
+      <span id="goal-progress" class="goal-progress meta">—</span>
+    </div>
+  </section>
+  <section class="menu-section">
+    <h3 class="menu-heading">View</h3>
     <div class="mode-switch" role="group" aria-label="View mode">
       <button id="mode-edit" class="btn mode-btn" type="button" data-mode="edit" aria-pressed="true" title="Edit only">edit</button>
       <button id="mode-split" class="btn mode-btn" type="button" data-mode="split" aria-pressed="false" title="Editor + live preview">split</button>
       <button id="mode-preview" class="btn mode-btn" type="button" data-mode="preview" aria-pressed="false" title="Preview only">preview</button>
     </div>
-    <button id="publish" class="btn" type="button">publish</button>
-    <button id="delete" class="btn btn-danger" type="button">delete</button>
-  </footer>
-</main>
-
-<p id="empty" class="empty" hidden>No posts yet.</p>
+    <div class="menu-row">
+      <button id="focus-toggle" class="btn" type="button">focus</button>
+      <button id="shortcuts-toggle" class="btn" type="button">shortcuts</button>
+    </div>
+  </section>
+  <section class="menu-section">
+    <h3 class="menu-heading">Post</h3>
+    <div class="menu-row">
+      <button id="publish" class="btn" type="button">publish</button>
+      <button id="delete" class="btn btn-danger" type="button">delete</button>
+    </div>
+  </section>
+</div>
 
 <div id="shortcuts-modal" class="modal-backdrop" hidden>
   <div class="modal-content" role="dialog" aria-labelledby="modal-title" aria-modal="true">
@@ -78,8 +119,20 @@
         <span class="shortcuts-keys"><kbd>⌘ N</kbd> / <kbd>Ctrl N</kbd></span>
       </li>
       <li class="shortcuts-item">
+        <span class="shortcuts-desc">Open posts panel</span>
+        <span class="shortcuts-keys"><kbd>⌘ P</kbd> / <kbd>Ctrl P</kbd></span>
+      </li>
+      <li class="shortcuts-item">
         <span class="shortcuts-desc">Save post immediately</span>
         <span class="shortcuts-keys"><kbd>⌘ S</kbd> / <kbd>Ctrl S</kbd></span>
+      </li>
+      <li class="shortcuts-item">
+        <span class="shortcuts-desc">Increase font size</span>
+        <span class="shortcuts-keys"><kbd>⌘ +</kbd> / <kbd>Ctrl +</kbd></span>
+      </li>
+      <li class="shortcuts-item">
+        <span class="shortcuts-desc">Decrease font size</span>
+        <span class="shortcuts-keys"><kbd>⌘ −</kbd> / <kbd>Ctrl −</kbd></span>
       </li>
       <li class="shortcuts-item">
         <span class="shortcuts-desc">Cycle view mode (edit → split → preview)</span>

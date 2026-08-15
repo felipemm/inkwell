@@ -14,6 +14,17 @@ const ui = {
   focusBtn: el('focus-toggle'),
   searchInput: el('search-input'),
   searchClear: el('search-clear'),
+  readingTime: el('reading-time'),
+  targetWords: el('target-words'),
+  goalProgress: el('goal-progress'),
+  goalContainer: el('goal-container'),
+  postsBtn: el('posts-btn'),
+  moreBtn: el('more-btn'),
+  drawer: el('posts-drawer'),
+  moreMenu: el('more-menu'),
+  fontIncreaseBtn: el('font-increase'),
+  fontDecreaseBtn: el('font-decrease'),
+  fontSizeLabel: el('font-size-label'),
 };
 
 let posts = [];        // sidebar summaries, newest first
@@ -103,6 +114,7 @@ function viewModeShowsPreview(mode) {
 // --- view mode (dom) ------------------------------------------------------
 
 let viewMode = 'edit';
+const VIEW_MODE_KEY = 'inkwell-view-mode';
 
 function refreshPreview() {
   if (!viewModeShowsPreview(viewMode)) return;
@@ -112,6 +124,7 @@ function refreshPreview() {
 function setViewMode(mode) {
   viewMode = normalizeViewMode(mode);
   document.body.dataset.viewMode = viewMode;
+  localStorage.setItem(VIEW_MODE_KEY, viewMode);
   for (const btn of document.querySelectorAll('.mode-btn')) {
     const on = btn.dataset.mode === viewMode;
     btn.classList.toggle('active', on);
@@ -169,7 +182,10 @@ function renderList() {
     when.textContent = relTime(p.updated_at);
 
     item.append(dot, title, when);
-    item.addEventListener('click', () => selectPost(p.id));
+    item.addEventListener('click', async () => {
+      await selectPost(p.id);
+      closePosts();
+    });
     return item;
   }));
   ui.empty.hidden = posts.length > 0;
@@ -188,6 +204,7 @@ function renderEditor() {
   ui.content.value = current.content || '';
   ui.publishBtn.textContent = current.status === 'published' ? 'unpublish' : 'publish';
   ui.publishBtn.classList.toggle('is-published', current.status === 'published');
+  if (ui.targetWords) ui.targetWords.value = current.target_word_count ?? 0;
   updateWordCount();
   refreshPreview();
 }
@@ -195,6 +212,9 @@ function renderEditor() {
 function updateWordCount() {
   const n = countWords(ui.content.value);
   ui.words.textContent = `${n} ${n === 1 ? 'word' : 'words'}`;
+  const minutes = calcReadingTime(n);
+  ui.readingTime.textContent = minutes ? `${minutes} min read` : '';
+  updateGoal();
   updateTotals();
 }
 
@@ -229,6 +249,7 @@ async function save() {
   pendingSave = api('PUT', `/api/posts/${current.id}`, {
     title: ui.title.value,
     content: ui.content.value,
+    target_word_count: Number(ui.targetWords.value) || 0,
   })
     .then((post) => {
       if (current && current.id === post.id) current = post;
@@ -276,6 +297,68 @@ function toggleFocusMode(on) {
   document.body.classList.toggle('focus-mode', focusMode);
   ui.focusBtn?.classList.toggle('active', focusMode);
 }
+
+// --- quiet room: drawer & menu -------------------------------------------
+
+function openPosts() {
+  if (focusMode) toggleFocusMode(false);
+  ui.drawer.classList.add('open');
+  ui.drawer.setAttribute('aria-hidden', 'false');
+  ui.searchInput?.focus();
+}
+
+function closePosts() {
+  ui.drawer.classList.remove('open');
+  ui.drawer.setAttribute('aria-hidden', 'true');
+}
+
+function openMore() {
+  if (focusMode) toggleFocusMode(false);
+  ui.moreMenu.classList.add('open');
+  ui.moreMenu.setAttribute('aria-hidden', 'false');
+}
+
+function closeMore() {
+  ui.moreMenu.classList.remove('open');
+  ui.moreMenu.setAttribute('aria-hidden', 'true');
+}
+
+// --- quiet room: font size, reading time, goal ---------------------------
+
+const FONT_SIZES = [16, 18, 20, 22, 24];
+const FONT_SIZE_KEY = 'inkwell-font-size';
+let fontSize = 18;
+
+function applyFontSize() {
+  document.documentElement.style.setProperty('--editor-font-size', `${fontSize}px`);
+  if (ui.fontSizeLabel) ui.fontSizeLabel.textContent = `${fontSize}px`;
+  localStorage.setItem(FONT_SIZE_KEY, String(fontSize));
+}
+
+function setFontSize(n) {
+  fontSize = Math.min(FONT_SIZES[FONT_SIZES.length - 1], Math.max(FONT_SIZES[0], n));
+  applyFontSize();
+}
+
+const calcReadingTime = (words) => (words === 0 ? 0 : Math.ceil(words / 200));
+
+function updateGoal() {
+  const target = Number(ui.targetWords.value) || 0;
+  if (target > 0) {
+    const pct = Math.min(100, Math.round((countWords(ui.content.value) / target) * 100));
+    ui.goalProgress.textContent = `${pct}%`;
+    ui.goalContainer.classList.toggle('goal-met', pct >= 100);
+  } else {
+    ui.goalProgress.textContent = '—';
+    ui.goalContainer.classList.remove('goal-met');
+  }
+}
+
+(function initFontSize() {
+  const stored = Number(localStorage.getItem(FONT_SIZE_KEY)) || 18;
+  fontSize = FONT_SIZES.reduce((best, s) => (Math.abs(s - stored) < Math.abs(best - stored) ? s : best), FONT_SIZES[0]);
+  applyFontSize();
+})();
 
 // --- search ---------------------------------------------------------------
 
@@ -325,6 +408,7 @@ ui.newBtn.addEventListener('click', async () => {
   setSaveState('saved');
   renderEditor();
   renderList();
+  closePosts();
   ui.title.focus();
 });
 
@@ -371,6 +455,30 @@ ui.shortcutsModal?.addEventListener('click', (e) => {
 
 ui.focusBtn?.addEventListener('click', () => toggleFocusMode());
 
+ui.postsBtn?.addEventListener('click', () => {
+  if (ui.drawer.classList.contains('open')) closePosts();
+  else openPosts();
+});
+ui.moreBtn?.addEventListener('click', () => {
+  if (ui.moreMenu.classList.contains('open')) closeMore();
+  else openMore();
+});
+ui.fontIncreaseBtn?.addEventListener('click', () => setFontSize(fontSize + 2));
+ui.fontDecreaseBtn?.addEventListener('click', () => setFontSize(fontSize - 2));
+ui.targetWords?.addEventListener('input', () => {
+  updateGoal();
+  scheduleSave();
+});
+
+document.addEventListener('click', (e) => {
+  if (ui.drawer.classList.contains('open') && !ui.drawer.contains(e.target) && e.target !== ui.postsBtn) {
+    closePosts();
+  }
+  if (ui.moreMenu.classList.contains('open') && !ui.moreMenu.contains(e.target) && e.target !== ui.moreBtn) {
+    closeMore();
+  }
+});
+
 document.addEventListener('keydown', (e) => {
   const isInput = ['INPUT', 'TEXTAREA'].includes(e.target?.tagName);
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
@@ -379,9 +487,18 @@ document.addEventListener('keydown', (e) => {
   } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     ui.newBtn.click();
+  } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p') {
+    e.preventDefault();
+    openPosts();
   } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
     e.preventDefault();
     save();
+  } else if ((e.metaKey || e.ctrlKey) && (e.key === '+' || e.key === '=')) {
+    e.preventDefault();
+    setFontSize(fontSize + 2);
+  } else if ((e.metaKey || e.ctrlKey) && e.key === '-') {
+    e.preventDefault();
+    setFontSize(fontSize - 2);
   } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
     e.preventDefault();
     if (current) cycleViewMode();
@@ -392,6 +509,12 @@ document.addEventListener('keydown', (e) => {
     if (!ui.shortcutsModal.hidden) {
       e.preventDefault();
       toggleShortcutsModal(false);
+    } else if (ui.drawer.classList.contains('open')) {
+      e.preventDefault();
+      closePosts();
+    } else if (ui.moreMenu.classList.contains('open')) {
+      e.preventDefault();
+      closeMore();
     } else if (focusMode) {
       e.preventDefault();
       toggleFocusMode(false);
@@ -449,7 +572,7 @@ function applyTheme(name, themes) {
 // --- boot -----------------------------------------------------------------
 
 async function start() {
-  setViewMode('edit');
+  setViewMode(localStorage.getItem(VIEW_MODE_KEY) || 'edit');
   posts = await api('GET', '/api/posts');
   if (!posts.length) {
     const post = await api('POST', '/api/posts', { title: '', content: '' });
