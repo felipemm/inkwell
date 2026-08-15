@@ -607,6 +607,12 @@ ui.newBtn.addEventListener('click', async () => {
 });
 
 ui.title.addEventListener('input', scheduleSave);
+ui.title.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    ui.content.focus();
+  }
+});
 ui.content.addEventListener('input', () => {
   updateWordCount();
   refreshPreview(); // live preview — no-op in edit mode

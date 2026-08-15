@@ -198,6 +198,14 @@ test("app.js cycles view mode on Cmd+Enter", async () => {
   expect(text).toContain("cycleViewMode()");
 });
 
+test("app.js moves focus from title to content on plain Enter", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain("ui.title.addEventListener('keydown'");
+  expect(text).toContain("ui.content.focus()");
+});
+
 test("app.js declares escapeHtml exactly once at top level (no module-scope redeclaration)", async () => {
   const res = await fetch(`${base}/app.js`);
   expect(res.status).toBe(200);
