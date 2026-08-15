@@ -682,6 +682,10 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
 export async function handleRequest(req: Request): Promise<Response> {
   const { pathname } = new URL(req.url);
 
+  if (pathname === "/ping" && req.method === "GET") {
+    return new Response("pong", { headers: { "content-type": "text/plain" } });
+  }
+
   if (pathname === "/api" || pathname.startsWith("/api/")) {
     try {
       return await handleApi(req, pathname);

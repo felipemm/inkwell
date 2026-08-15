@@ -53,6 +53,15 @@ const revisionsOf = (postId: number) => {
   }
 };
 
+// ─── Ping (spec: adws/specs/boardtest2_ping-endpoint.md) ───────────────────
+
+test("GET /ping returns pong", async () => {
+  const res = await fetch(`${base}/ping`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/plain");
+  expect(await res.text()).toBe("pong");
+});
+
 test("starts with an empty list", async () => {
   const res = await api("/posts");
   expect(res.status).toBe(200);

@@ -10,6 +10,7 @@ bun test            # end-to-end API suite against a temp db
 ```
 | Method | Route | Does |
 | --- | --- | --- |
+| GET | `/ping` | Liveness check → `pong` |
 | GET | `/api/posts` | List `{id, title, status, updated_at, word_count, target_word_count}`, newest updated first (supports `?q=term` / `?search=term`) |
 | POST | `/api/posts` | Create a draft from `{title?, content?, target_word_count?}` |
 | GET | `/api/posts/:id` | Full post |
