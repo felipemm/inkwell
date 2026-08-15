@@ -1,5 +1,5 @@
 // inkwell — minimalist blog writing app. Bun + bun:sqlite, zero dependencies.
-// Run: bun run server.ts   (PORT and INKWELL_DB env overrides supported)
+// Run: bun run src/server.ts   (PORT and INKWELL_DB env overrides supported)
 
 import { Database } from "bun:sqlite";
 

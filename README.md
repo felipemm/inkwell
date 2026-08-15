@@ -5,7 +5,7 @@ Drafts autosave as you type.
 
 - **Tech stack:** Bun, SQLite (`bun:sqlite`), vanilla JS
 ```bash
-bun run server.ts   # http://localhost:4501 — PORT and INKWELL_DB env overrides
+bun run src/server.ts   # http://localhost:4501 — PORT and INKWELL_DB env overrides
 bun test            # end-to-end API suite against a temp db
 ```
 | Method | Route | Does |
