@@ -384,7 +384,7 @@ function updateGoal() {
 
 // --- history (pure) ------------------------------------------------------
 
-function escapeHtml(s) {
+function escapeHtmlText(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
@@ -396,7 +396,7 @@ function revisionReasonText(reason) {
 function renderDiffLines(ops) {
   return ops.map(({ op, text }) => {
     const cls = op === '+' ? 'diff-add' : op === '-' ? 'diff-del' : 'diff-ctx';
-    return `<div class="diff-line ${cls}"><span class="diff-op">${op}</span><span class="diff-text">${escapeHtml(text)}</span></div>`;
+    return `<div class="diff-line ${cls}"><span class="diff-op">${op}</span><span class="diff-text">${escapeHtmlText(text)}</span></div>`;
   }).join('\n');
 }
 

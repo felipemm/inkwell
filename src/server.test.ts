@@ -187,6 +187,14 @@ test("app.js cycles view mode on Cmd+Enter", async () => {
   expect(text).toContain("cycleViewMode()");
 });
 
+test("app.js declares escapeHtml exactly once at top level (no module-scope redeclaration)", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+  const decls = js.match(/^function escapeHtml\(/gm) ?? [];
+  expect(decls).toHaveLength(1);
+});
+
 // Pulls one `// --- <name> ---` section out of app.js so pure logic can be exercised directly.
 function section(src: string, name: string): string {
   const start = src.indexOf(`// --- ${name}`);
