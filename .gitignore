@@ -13,3 +13,5 @@ node_modules/
 # OS / editor
 .DS_Store
 *.swp
+adws/adw_data/sessions/
+adws/adw_data/sssf.db
