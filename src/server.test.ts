@@ -418,6 +418,9 @@ test("index.html contains writing goal, reading time, and font size elements", a
   expect(text).toContain('id="font-increase"');
   expect(text).toContain('id="font-decrease"');
   expect(text).toContain('id="word-count"');
+  expect(text).toContain('data-width="narrow"');
+  expect(text).toContain('data-width="medium"');
+  expect(text).toContain('data-width="wide"');
 });
 
 test("app.js contains reading time calculation and writing goal logic", async () => {
@@ -428,6 +431,9 @@ test("app.js contains reading time calculation and writing goal logic", async ()
   expect(text).toContain("goalProgress");
   expect(text).toContain("setFontSize");
   expect(text).toContain("target_word_count");
+  expect(text).toContain("TYPE_WIDTHS");
+  expect(text).toContain("setTypeWidth");
+  expect(text).toContain("applyTypeWidth");
 });
 
 test("index.html contains the quiet-room chrome", async () => {

@@ -23,6 +23,7 @@
   --overlay: rgba(0, 0, 0, 0.65);
   --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
   --editor-font-size: 18px;
+  --editor-max-width: 720px;
 
   --themes: dark light;
 }
@@ -360,6 +361,15 @@ body.focus-mode .topbar {
 .goal-progress { min-width: 34px; text-align: right; }
 .goal-met { color: var(--accent); }
 #more-menu .mode-switch { width: 100%; justify-content: space-between; margin-bottom: 8px; }
+#more-menu .width-switch { width: 100%; justify-content: space-between; }
+.width-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
 
 /* --- quiet room: motion ------------------------------------------------- */
 
@@ -379,7 +389,7 @@ body.focus-mode .topbar {
 
 .title, .content, .preview {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--editor-max-width);
   margin: 0 auto;
   padding: 0 40px;
   border: 0;

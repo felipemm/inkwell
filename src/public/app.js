@@ -25,6 +25,7 @@ const ui = {
   fontIncreaseBtn: el('font-increase'),
   fontDecreaseBtn: el('font-decrease'),
   fontSizeLabel: el('font-size-label'),
+  widthButtons: Array.from(document.querySelectorAll('.width-btn')),
   historyBtn: el('history-btn'),
   historyModal: el('history-modal'),
   historyList: el('history-list'),
@@ -389,6 +390,32 @@ function updateGoal() {
   applyFontSize();
 })();
 
+// --- quiet room: type width -------------------------------------------------
+
+const TYPE_WIDTHS = { narrow: 560, medium: 720, wide: 960 };
+const TYPE_WIDTH_KEY = 'inkwell-type-width';
+let typeWidth = 'medium';
+
+function applyTypeWidth() {
+  document.documentElement.style.setProperty('--editor-max-width', `${TYPE_WIDTHS[typeWidth]}px`);
+  for (const btn of document.querySelectorAll('.width-btn')) {
+    const on = btn.dataset.width === typeWidth;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', String(on));
+  }
+  localStorage.setItem(TYPE_WIDTH_KEY, typeWidth);
+}
+
+function setTypeWidth(w) {
+  if (TYPE_WIDTHS[w]) { typeWidth = w; applyTypeWidth(); }
+}
+
+(function initTypeWidth() {
+  const stored = localStorage.getItem(TYPE_WIDTH_KEY);
+  typeWidth = TYPE_WIDTHS[stored] ? stored : 'medium';
+  applyTypeWidth();
+})();
+
 // --- history (pure) ------------------------------------------------------
 
 function escapeHtmlText(s) {
@@ -616,6 +643,9 @@ ui.moreBtn?.addEventListener('click', () => {
 });
 ui.fontIncreaseBtn?.addEventListener('click', () => setFontSize(fontSize + 2));
 ui.fontDecreaseBtn?.addEventListener('click', () => setFontSize(fontSize - 2));
+for (const btn of ui.widthButtons) {
+  btn?.addEventListener('click', () => setTypeWidth(btn.dataset.width));
+}
 ui.targetWords?.addEventListener('input', () => {
   updateGoal();
   scheduleSave();
