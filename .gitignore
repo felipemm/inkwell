@@ -15,3 +15,5 @@ node_modules/
 *.swp
 adws/adw_data/sessions/
 adws/adw_data/sssf.db
+adws/adw_data/sssf.db-wal
+adws/adw_data/sssf.db-shm
