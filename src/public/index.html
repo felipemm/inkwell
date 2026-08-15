@@ -57,6 +57,7 @@
     <span id="reading-time" class="meta"></span>
     <span id="save-state" class="meta save-state">saved</span>
     <span class="spacer"></span>
+    <button id="history-btn" class="btn" type="button" title="Revision history">history</button>
   </footer>
 </main>
 
@@ -151,6 +152,22 @@
         <span class="shortcuts-keys"><kbd>Esc</kbd></span>
       </li>
     </ul>
+  </div>
+</div>
+
+<div id="history-modal" class="modal-backdrop" hidden>
+  <div class="modal-content history-content" role="dialog" aria-labelledby="history-title" aria-modal="true">
+    <div class="modal-header">
+      <h2 id="history-title" class="modal-title">History</h2>
+      <button id="history-close" class="close-btn" type="button" aria-label="Close">&times;</button>
+    </div>
+    <ul id="history-list" class="history-list"></ul>
+    <div id="history-diff" class="history-diff" aria-live="polite"></div>
+    <div class="history-actions">
+      <span id="history-meta" class="meta"></span>
+      <span class="spacer"></span>
+      <button id="history-restore" class="btn" type="button" disabled>restore this version</button>
+    </div>
   </div>
 </div>
 

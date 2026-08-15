@@ -25,6 +25,13 @@ const ui = {
   fontIncreaseBtn: el('font-increase'),
   fontDecreaseBtn: el('font-decrease'),
   fontSizeLabel: el('font-size-label'),
+  historyBtn: el('history-btn'),
+  historyModal: el('history-modal'),
+  historyList: el('history-list'),
+  historyDiff: el('history-diff'),
+  historyRestore: el('history-restore'),
+  historyMeta: el('history-meta'),
+  historyClose: el('history-close'),
 };
 
 let posts = [];        // sidebar summaries, newest first
@@ -375,6 +382,84 @@ function updateGoal() {
   applyFontSize();
 })();
 
+// --- history (pure) ------------------------------------------------------
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function revisionReasonText(reason) {
+  const labels = { edit: 'edit', publish: 'published', unpublish: 'unpublished', restore: 'restored' };
+  return labels[reason] || reason;
+}
+
+function renderDiffLines(ops) {
+  return ops.map(({ op, text }) => {
+    const cls = op === '+' ? 'diff-add' : op === '-' ? 'diff-del' : 'diff-ctx';
+    return `<div class="diff-line ${cls}"><span class="diff-op">${op}</span><span class="diff-text">${escapeHtml(text)}</span></div>`;
+  }).join('\n');
+}
+
+// --- history (dom) -------------------------------------------------------
+
+let historyRevisions = [];
+let selectedRevId = null;
+
+async function openHistory() {
+  if (!current) return;
+  await flushSave(); // list reflects the latest snapshot
+  historyRevisions = await api('GET', `/api/posts/${current.id}/revisions`);
+  selectedRevId = null;
+  renderHistoryList();
+  ui.historyDiff.innerHTML = '';
+  ui.historyMeta.textContent = '';
+  ui.historyRestore.disabled = true;
+  ui.historyModal.hidden = false;
+}
+
+function closeHistory() {
+  ui.historyModal.hidden = true;
+}
+
+function renderHistoryList() {
+  ui.historyList.replaceChildren(...historyRevisions.map((rev) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'history-item' + (rev.id === selectedRevId ? ' active' : '');
+    item.dataset.id = rev.id;
+
+    const when = document.createElement('span');
+    when.className = 'history-when';
+    when.textContent = relTime(rev.created_at);
+
+    const detail = document.createElement('span');
+    detail.className = 'history-detail';
+    detail.textContent = `${rev.word_count} words · ${revisionReasonText(rev.reason)}`;
+
+    item.append(when, detail);
+    item.addEventListener('click', () => selectRevision(rev.id));
+    return item;
+  }));
+}
+
+async function selectRevision(revId) {
+  selectedRevId = revId;
+  renderHistoryList();
+  const ops = await api('GET', `/api/posts/${current.id}/revisions/${revId}/diff`);
+  ui.historyDiff.innerHTML = renderDiffLines(ops);
+  const rev = historyRevisions.find((r) => r.id === revId);
+  ui.historyMeta.textContent = rev ? `${revisionReasonText(rev.reason)} · ${rev.word_count} words` : '';
+  ui.historyRestore.disabled = false;
+}
+
+async function restoreRevision() {
+  if (!current || !selectedRevId) return;
+  current = await api('POST', `/api/posts/${current.id}/revisions/${selectedRevId}/restore`);
+  mergeSummary(current);
+  renderEditor();
+  closeHistory();
+}
+
 // --- search ---------------------------------------------------------------
 
 let currentSearchQuery = '';
@@ -468,6 +553,13 @@ ui.shortcutsModal?.addEventListener('click', (e) => {
   if (e.target === ui.shortcutsModal) toggleShortcutsModal(false);
 });
 
+ui.historyBtn?.addEventListener('click', () => openHistory());
+ui.historyClose?.addEventListener('click', () => closeHistory());
+ui.historyRestore?.addEventListener('click', () => restoreRevision());
+ui.historyModal?.addEventListener('click', (e) => {
+  if (e.target === ui.historyModal) closeHistory();
+});
+
 ui.focusBtn?.addEventListener('click', () => toggleFocusMode());
 
 ui.postsBtn?.addEventListener('click', () => {
@@ -524,6 +616,9 @@ document.addEventListener('keydown', (e) => {
     if (!ui.shortcutsModal.hidden) {
       e.preventDefault();
       toggleShortcutsModal(false);
+    } else if (ui.historyModal && !ui.historyModal.hidden) {
+      e.preventDefault();
+      closeHistory();
     } else if (ui.drawer.classList.contains('open')) {
       e.preventDefault();
       closePosts();

@@ -675,6 +675,71 @@ kbd {
   align-items: center;
 }
 
+/* --- history panel ------------------------------------------------------ */
+
+.history-content { max-width: 720px; }
+
+.history-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.history-item:hover { color: var(--text); background: var(--surface-2); }
+.history-item.active { color: var(--accent); border-color: var(--border); }
+
+.history-when { font-weight: 600; }
+.history-detail { color: var(--text-faint); }
+
+.history-diff {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 0;
+}
+
+.diff-line { display: flex; gap: 8px; padding: 0 12px; white-space: pre-wrap; }
+.diff-op { width: 1ch; color: var(--text-faint); user-select: none; }
+.diff-add .diff-text { color: var(--accent); }
+.diff-del .diff-text { color: var(--danger); text-decoration: line-through; }
+.diff-ctx .diff-text { color: var(--text-dim); }
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.history-actions .btn:disabled { opacity: 0.5; cursor: default; }
+
 /* --- scrollbars --------------------------------------------------------- */
 
 ::-webkit-scrollbar { width: 9px; }
