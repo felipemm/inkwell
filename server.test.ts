@@ -309,14 +309,15 @@ test("preview rendering: markdown section renders headings, inline marks, lists,
   expect(renderMarkdown("# a")).not.toBe(renderMarkdown("# ab"));
 });
 
-test("index.html contains shortcuts modal elements and visual key hints", async () => {
+test("index.html contains shortcuts modal elements", async () => {
   const res = await fetch(`${base}/index.html`);
   expect(res.status).toBe(200);
   const text = await res.text();
   expect(text).toContain('id="shortcuts-modal"');
   expect(text).toContain('id="shortcuts-toggle"');
   expect(text).toContain('id="modal-close"');
-  expect(text).toContain('class="key-hint"');
+  expect(text).toContain("<kbd>");
+  expect(text).not.toContain("key-hint");
 });
 
 test("app.js contains keydown handlers for Cmd+N, ?, and Escape", async () => {
@@ -329,16 +330,12 @@ test("app.js contains keydown handlers for Cmd+N, ?, and Escape", async () => {
   expect(text).toContain("toggleShortcutsModal");
 });
 
-test("index.html contains focus mode and font size control elements", async () => {
+test("index.html contains focus mode elements", async () => {
   const res = await fetch(`${base}/index.html`);
   expect(res.status).toBe(200);
   const text = await res.text();
   expect(text).toContain('id="focus-toggle"');
-  expect(text).toContain('id="font-increase"');
-  expect(text).toContain('id="font-decrease"');
   expect(text).toContain("Toggle focus mode");
-  expect(text).toContain("Increase font size");
-  expect(text).toContain("Decrease font size");
 });
 
 test("style.css contains focus-mode styles", async () => {
@@ -349,16 +346,12 @@ test("style.css contains focus-mode styles", async () => {
   expect(text).toContain("body.focus-mode .footer");
 });
 
-test("app.js contains focus mode and font size handlers and shortcut listeners", async () => {
+test("app.js contains focus mode handlers and shortcut listeners", async () => {
   const res = await fetch(`${base}/app.js`);
   expect(res.status).toBe(200);
   const text = await res.text();
   expect(text).toContain("toggleFocusMode");
-  expect(text).toContain("setFontSize");
-  expect(text).toContain("ui.title.style.fontSize");
   expect(text).toContain("e.shiftKey && e.key.toLowerCase() === 'f'");
-  expect(text).toContain("e.key === '=' || e.key === '+'");
-  expect(text).toContain("e.key === '-' || e.key === '_'");
 });
 
 test("creates post with target_word_count and updates it via PUT", async () => {
@@ -384,24 +377,23 @@ test("creates post with target_word_count and updates it via PUT", async () => {
   expect(item.target_word_count).toBe(1000);
 });
 
-test("index.html contains target word count, reading time, and goal elements", async () => {
+test("index.html omits writing goal, reading time, and font size elements", async () => {
   const res = await fetch(`${base}/index.html`);
   expect(res.status).toBe(200);
   const text = await res.text();
-  expect(text).toContain('id="target-words"');
-  expect(text).toContain('id="reading-time"');
-  expect(text).toContain('id="goal-progress"');
-  expect(text).toContain('id="goal-container"');
+  expect(text).not.toContain('id="target-words"');
+  expect(text).not.toContain('id="reading-time"');
+  expect(text).not.toContain('id="goal-container"');
+  expect(text).toContain('id="word-count"');
 });
 
-test("app.js contains reading time calculation and writing goal logic", async () => {
+test("app.js omits reading time calculation and writing goal logic", async () => {
   const res = await fetch(`${base}/app.js`);
   expect(res.status).toBe(200);
   const text = await res.text();
-  expect(text).toContain("calcReadingTime");
-  expect(text).toContain("target_word_count");
-  expect(text).toContain("goalProgress");
-  expect(text).toContain("goal-met");
+  expect(text).not.toContain("calcReadingTime");
+  expect(text).not.toContain("goalProgress");
+  expect(text).not.toContain("goal-met");
 });
 
 test("GET /api/posts?q= filters posts by title or content (case-insensitive)", async () => {
@@ -513,14 +505,12 @@ test("index.html, app.js, and style.css contain search filter UI elements and lo
   const html = await htmlRes.text();
   expect(html).toContain('id="search-input"');
   expect(html).toContain('id="search-clear"');
-  expect(html).toContain('id="search-count"');
   expect(html).toContain('class="search-box"');
 
   const jsRes = await fetch(`${base}/app.js`);
   const js = await jsRes.text();
   expect(js).toContain("searchInput");
   expect(js).toContain("searchClear");
-  expect(js).toContain("searchCount");
   expect(js).toContain("performSearch");
   expect(js).toContain("/api/posts?q=");
 
@@ -529,7 +519,6 @@ test("index.html, app.js, and style.css contain search filter UI elements and lo
   expect(css).toContain(".search-box");
   expect(css).toContain(".search-input");
   expect(css).toContain(".search-clear");
-  expect(css).toContain(".search-count");
 });
 
 test("GET /api/tags returns distinct tag counts sorted by count DESC, tag ASC", async () => {

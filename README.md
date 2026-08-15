@@ -23,18 +23,16 @@ bun test            # end-to-end API suite against a temp db
 - `Cmd+S` / `Ctrl+S`: Save current post
 - `Cmd+Enter` / `Ctrl+Enter`: Cycle view mode (edit → split → preview)
 - `Cmd+Shift+F` / `Ctrl+Shift+F`: Toggle focus mode
-- `Cmd++` / `Ctrl++`: Increase editor font size
-- `Cmd+-` / `Ctrl+-`: Decrease editor font size
 - `?` or `Cmd+/` / `Ctrl+/`: Open/toggle keyboard shortcuts help modal
 - `Esc`: Close keyboard shortcuts help modal / exit focus mode
 
-Action buttons feature visual key shortcut hints (`<kbd>`) for quick reference, and an interactive keyboard shortcuts modal is accessible via the `shortcuts ?` footer button or `?` / `Cmd+/` shortcut.
+An interactive keyboard shortcuts modal is accessible via the `shortcuts` footer button or `?` / `Cmd+/` shortcut.
 
 ## Sidebar UI
 
-- **Search Filter**: Includes a search text input (`#search-input`) above the post list to filter posts by title and content as you type, displaying a live result count (`#search-count`) and a clear button (`#search-clear`) to restore the full list.
-- **Sidebar Footer**: Displays total post count and aggregate word count across all posts.
-- **Editor Footer**: Displays active post word count, estimated reading time, writing target goal input, live progress percentage indicator, and auto-save status (`saved`/`saving`), alongside post controls (font size adjusters, focus mode toggle, keyboard shortcuts help, view-mode switch, publish/unpublish toggle, and delete post action).
+- **Search Filter**: Includes a search text input (`#search-input`) above the post list to filter posts by title and content as you type, with a clear button (`#search-clear`) to restore the full list.
+- **Sidebar Footer**: Displays total post count and a theme toggle icon button (☀/☾) that switches between dark and light themes.
+- **Editor Footer**: Displays active post word count and auto-save status (`saved`/`saving`), alongside post controls (focus mode toggle, keyboard shortcuts help, view-mode switch, publish/unpublish toggle, and delete post action).
 
 ## View Modes
 

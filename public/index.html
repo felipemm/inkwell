@@ -25,16 +25,14 @@
   <div class="search-box">
     <input id="search-input" class="search-input" type="text" placeholder="Search posts…" autocomplete="off" spellcheck="false">
     <button id="search-clear" class="search-clear" type="button" title="Clear search" aria-label="Clear search" hidden>&times;</button>
-    <span id="search-count" class="search-count" hidden></span>
   </div>
   <div class="list-head">
-    <button id="new-post" class="new-btn" type="button">+ new <kbd class="key-hint">⌘N</kbd></button>
+    <button id="new-post" class="new-btn" type="button">+ new</button>
   </div>
   <nav id="post-list" class="post-list" aria-label="Posts"></nav>
   <footer class="sidebar-footer">
     <span id="total-posts" class="meta">0 posts</span>
-    <span id="total-words" class="meta">0 words</span>
-    <button id="theme-toggle" class="btn" type="button" title="Switch theme">light</button>
+    <button id="theme-toggle" class="btn" type="button" aria-label="Switch theme"></button>
   </footer>
 </aside>
 
@@ -52,23 +50,14 @@
   </div>
   <footer class="footer">
     <span id="word-count" class="meta">0 words</span>
-    <span id="reading-time" class="meta">0 min read</span>
-    <div class="goal-container" id="goal-container">
-      <label for="target-words" class="meta goal-label">Goal:</label>
-      <input id="target-words" class="goal-input" type="number" min="0" step="50" placeholder="Set target" title="Target word count">
-      <span id="goal-progress" class="meta goal-progress"></span>
-    </div>
     <span id="save-state" class="meta save-state">saved</span>
     <span class="spacer"></span>
-    <button id="font-decrease" class="btn" type="button" title="Decrease font size">A- <kbd class="key-hint">⌘-</kbd></button>
-    <button id="font-increase" class="btn" type="button" title="Increase font size">A+ <kbd class="key-hint">⌘+</kbd></button>
-    <button id="focus-toggle" class="btn" type="button">focus <kbd class="key-hint">⌘⇧F</kbd></button>
-    <button id="shortcuts-toggle" class="btn" type="button">shortcuts <kbd class="key-hint">?</kbd></button>
+    <button id="focus-toggle" class="btn" type="button">focus</button>
+    <button id="shortcuts-toggle" class="btn" type="button">shortcuts</button>
     <div class="mode-switch" role="group" aria-label="View mode">
       <button id="mode-edit" class="btn mode-btn" type="button" data-mode="edit" aria-pressed="true" title="Edit only">edit</button>
       <button id="mode-split" class="btn mode-btn" type="button" data-mode="split" aria-pressed="false" title="Editor + live preview">split</button>
       <button id="mode-preview" class="btn mode-btn" type="button" data-mode="preview" aria-pressed="false" title="Preview only">preview</button>
-      <kbd class="key-hint">⌘↵</kbd>
     </div>
     <button id="publish" class="btn" type="button">publish</button>
     <button id="delete" class="btn btn-danger" type="button">delete</button>
@@ -99,14 +88,6 @@
       <li class="shortcuts-item">
         <span class="shortcuts-desc">Toggle focus mode</span>
         <span class="shortcuts-keys"><kbd>⌘ Shift F</kbd> / <kbd>Ctrl Shift F</kbd></span>
-      </li>
-      <li class="shortcuts-item">
-        <span class="shortcuts-desc">Increase font size</span>
-        <span class="shortcuts-keys"><kbd>⌘ +</kbd> / <kbd>Ctrl +</kbd></span>
-      </li>
-      <li class="shortcuts-item">
-        <span class="shortcuts-desc">Decrease font size</span>
-        <span class="shortcuts-keys"><kbd>⌘ -</kbd> / <kbd>Ctrl -</kbd></span>
       </li>
       <li class="shortcuts-item">
         <span class="shortcuts-desc">Open keyboard shortcuts help</span>

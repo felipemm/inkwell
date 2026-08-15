@@ -3,24 +3,17 @@ const ui = {
   list: el('post-list'), editor: el('editor'), empty: el('empty'),
   title: el('title'), content: el('content'), preview: el('preview'),
   words: el('word-count'), save: el('save-state'),
-  readingTime: el('reading-time'),
-  targetWords: el('target-words'),
-  goalProgress: el('goal-progress'),
-  goalContainer: el('goal-container'),
   panes: el('panes'),
   modeButtons: Array.from(document.querySelectorAll('.mode-btn')),
   publishBtn: el('publish'),
   deleteBtn: el('delete'), newBtn: el('new-post'),
-  totalPosts: el('total-posts'), totalWords: el('total-words'),
+  totalPosts: el('total-posts'),
   shortcutsToggle: el('shortcuts-toggle'),
   shortcutsModal: el('shortcuts-modal'),
   modalClose: el('modal-close'),
   focusBtn: el('focus-toggle'),
-  fontIncreaseBtn: el('font-increase'),
-  fontDecreaseBtn: el('font-decrease'),
   searchInput: el('search-input'),
   searchClear: el('search-clear'),
-  searchCount: el('search-count'),
 };
 
 let posts = [];        // sidebar summaries, newest first
@@ -28,7 +21,6 @@ let current = null;    // full post being edited
 let saveTimer = null;
 let pendingSave = null;
 let focusMode = false;
-let fontSize = 18;
 
 async function api(method, path, body) {
   const res = await fetch(path, {
@@ -155,12 +147,6 @@ function relTime(ts) {
 
 const countWords = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
-function calcReadingTime(wordCount) {
-  if (!wordCount || wordCount <= 0) return '0 min read';
-  const mins = Math.max(1, Math.ceil(wordCount / 200));
-  return `${mins} min read`;
-}
-
 // --- rendering ------------------------------------------------------------
 
 function renderList() {
@@ -200,9 +186,6 @@ function renderEditor() {
   if (!current) return;
   ui.title.value = current.title || '';
   ui.content.value = current.content || '';
-  if (ui.targetWords) {
-    ui.targetWords.value = current.target_word_count || '';
-  }
   ui.publishBtn.textContent = current.status === 'published' ? 'unpublish' : 'publish';
   ui.publishBtn.classList.toggle('is-published', current.status === 'published');
   updateWordCount();
@@ -212,39 +195,12 @@ function renderEditor() {
 function updateWordCount() {
   const n = countWords(ui.content.value);
   ui.words.textContent = `${n} ${n === 1 ? 'word' : 'words'}`;
-  if (ui.readingTime) {
-    ui.readingTime.textContent = calcReadingTime(n);
-  }
-  const target = parseInt(ui.targetWords?.value, 10) || 0;
-  if (target > 0) {
-    const pct = Math.round((n / target) * 100);
-    if (ui.goalProgress) {
-      ui.goalProgress.textContent = `${pct}%`;
-      ui.goalProgress.title = `${n} / ${target} words`;
-    }
-    ui.goalContainer?.classList.toggle('goal-met', n >= target);
-  } else {
-    if (ui.goalProgress) {
-      ui.goalProgress.textContent = '';
-      ui.goalProgress.title = '';
-    }
-    ui.goalContainer?.classList.remove('goal-met');
-  }
   updateTotals();
 }
 
 function updateTotals() {
   const count = posts.length;
-  let totalWords = 0;
-  for (const p of posts) {
-    if (current && p.id === current.id) {
-      totalWords += countWords(ui.content.value);
-    } else {
-      totalWords += p.word_count || 0;
-    }
-  }
   ui.totalPosts.textContent = `${count} ${count === 1 ? 'post' : 'posts'}`;
-  ui.totalWords.textContent = `${totalWords} ${totalWords === 1 ? 'word' : 'words'}`;
 }
 
 function setSaveState(state) {
@@ -270,12 +226,9 @@ async function save() {
   clearTimeout(saveTimer);
   saveTimer = null;
   setSaveState('saving…');
-  const targetVal = ui.targetWords ? parseInt(ui.targetWords.value, 10) : 0;
-  const target_word_count = Number.isInteger(targetVal) && targetVal >= 0 ? targetVal : 0;
   pendingSave = api('PUT', `/api/posts/${current.id}`, {
     title: ui.title.value,
     content: ui.content.value,
-    target_word_count,
   })
     .then((post) => {
       if (current && current.id === post.id) current = post;
@@ -324,13 +277,6 @@ function toggleFocusMode(on) {
   ui.focusBtn?.classList.toggle('active', focusMode);
 }
 
-function setFontSize(size) {
-  fontSize = Math.min(36, Math.max(12, size));
-  if (ui.content) ui.content.style.fontSize = `${fontSize}px`;
-  if (ui.preview) ui.preview.style.fontSize = `${fontSize}px`;
-  if (ui.title) ui.title.style.fontSize = `${fontSize + 12}px`;
-}
-
 // --- search ---------------------------------------------------------------
 
 let currentSearchQuery = '';
@@ -343,14 +289,8 @@ async function performSearch(query) {
     const res = await api('GET', `/api/posts?q=${encodeURIComponent(trimmed)}`);
     if (currentSearchQuery !== trimmed) return;
     posts = res;
-    if (ui.searchCount) {
-      ui.searchCount.hidden = false;
-      const count = posts.length;
-      ui.searchCount.textContent = `${count} ${count === 1 ? 'match' : 'matches'}`;
-    }
   } else {
     if (ui.searchClear) ui.searchClear.hidden = true;
-    if (ui.searchCount) ui.searchCount.hidden = true;
     const res = await api('GET', '/api/posts');
     if (currentSearchQuery !== '') return;
     posts = res;
@@ -394,13 +334,6 @@ ui.content.addEventListener('input', () => {
   refreshPreview(); // live preview — no-op in edit mode
   scheduleSave();
 });
-ui.targetWords?.addEventListener('input', () => {
-  if (current) {
-    current.target_word_count = parseInt(ui.targetWords.value, 10) || 0;
-    updateWordCount();
-    scheduleSave();
-  }
-});
 
 for (const btn of document.querySelectorAll('.mode-btn')) {
   btn.addEventListener('click', () => setViewMode(btn.dataset.mode));
@@ -437,20 +370,12 @@ ui.shortcutsModal?.addEventListener('click', (e) => {
 });
 
 ui.focusBtn?.addEventListener('click', () => toggleFocusMode());
-ui.fontIncreaseBtn?.addEventListener('click', () => setFontSize(fontSize + 2));
-ui.fontDecreaseBtn?.addEventListener('click', () => setFontSize(fontSize - 2));
 
 document.addEventListener('keydown', (e) => {
   const isInput = ['INPUT', 'TEXTAREA'].includes(e.target?.tagName);
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
     e.preventDefault();
     toggleFocusMode();
-  } else if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
-    e.preventDefault();
-    setFontSize(fontSize + 2);
-  } else if ((e.metaKey || e.ctrlKey) && (e.key === '-' || e.key === '_')) {
-    e.preventDefault();
-    setFontSize(fontSize - 2);
   } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     ui.newBtn.click();
@@ -503,8 +428,9 @@ function applyTheme(name, themes) {
   localStorage.setItem(THEME_KEY, name);
   if (themeBtn) {
     const next = themes[(themes.indexOf(name) + 1) % themes.length];
-    themeBtn.textContent = next;
+    themeBtn.textContent = next === 'light' ? '☀' : '☾';
     themeBtn.title = `Switch to ${next} theme`;
+    themeBtn.setAttribute('aria-label', `Switch to ${next} theme`);
   }
 }
 
