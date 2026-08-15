@@ -461,6 +461,42 @@ test("app.js contains reading time calculation and writing goal logic", async ()
   expect(text).toContain("applyTypeWidth");
 });
 
+test("index.html contains the font family picker with at least 10 options", async () => {
+  const res = await fetch(`${base}/index.html`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain('id="font-select"');
+  expect(text).toContain('class="font-select"');
+  expect(text).toContain('aria-label="Editor font"');
+  const optionCount = (text.match(/<option value="/g) ?? []).length;
+  expect(optionCount).toBeGreaterThanOrEqual(10);
+  expect(text).toContain('value="serif"');
+  expect(text).toContain('value="mono"');
+});
+
+test("style.css defines the editor font variable and the font select style", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain("--editor-font: var(--serif)");
+  expect(text).toContain("font-family: var(--editor-font, var(--serif))");
+  expect(text).toContain(".font-select");
+});
+
+test("app.js contains font family logic and persistence", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  expect(text).toContain("const FONTS");
+  expect(text).toContain("inkwell-font-family");
+  expect(text).toContain("setFontFamily");
+  expect(text).toContain("applyFontFamily");
+  expect(text).toContain("--editor-font");
+  expect(text).toContain("ui.fontSelect");
+  expect(text).toContain('ui-serif, Georgia, "Iowan Old Style"');
+  expect(text).toContain('"Courier New", Courier, monospace');
+});
+
 test("index.html contains the quiet-room chrome", async () => {
   const res = await fetch(`${base}/index.html`);
   expect(res.status).toBe(200);

@@ -23,6 +23,7 @@
   --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
   --editor-font-size: 18px;
   --editor-max-width: 1118px;
+  --editor-font: var(--serif);
 
   --themes: dark light;
 }
@@ -359,6 +360,17 @@ body.focus-mode .footer {
   padding: 2px;
 }
 
+.font-select {
+  max-width: 132px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
 /* --- quiet room: motion ------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -383,7 +395,7 @@ body.focus-mode .footer {
   border: 0;
   background: var(--editor-surface);
   color: var(--text);
-  font-family: var(--serif);
+  font-family: var(--editor-font, var(--serif));
 }
 
 .title {

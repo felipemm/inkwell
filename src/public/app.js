@@ -25,6 +25,7 @@ const ui = {
   fontIncreaseBtn: el('font-increase'),
   fontDecreaseBtn: el('font-decrease'),
   fontSizeLabel: el('font-size-label'),
+  fontSelect: el('font-select'),
   widthButtons: Array.from(document.querySelectorAll('.width-btn')),
   historyBtn: el('history-btn'),
   historyModal: el('history-modal'),
@@ -417,6 +418,41 @@ function setTypeWidth(w) {
   applyTypeWidth();
 })();
 
+// --- quiet room: font family ----------------------------------------------
+
+const FONTS = {
+  serif: 'ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif',
+  sans: 'ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif',
+  mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  georgia: 'Georgia, "Iowan Old Style", "Times New Roman", serif',
+  garamond: 'Garamond, "EB Garamond", "Cormorant Garamond", "Times New Roman", serif',
+  palatino: 'Palatino, "Palatino Linotype", "Book Antiqua", serif',
+  bookantiqua: '"Book Antiqua", Palatino, "Palatino Linotype", serif',
+  didot: 'Didot, "Bodoni MT", "Playfair Display", "Times New Roman", serif',
+  baskerville: 'Baskerville, "Baskerville Old Face", "Hoefler Text", Garamond, "Times New Roman", serif',
+  courier: '"Courier New", Courier, monospace',
+  trebuchet: '"Trebuchet MS", "Lucida Grande", "Segoe UI", sans-serif',
+  verdana: 'Verdana, Geneva, "Segoe UI", sans-serif',
+};
+const FONT_FAMILY_KEY = 'inkwell-font-family';
+let fontFamily = 'serif';
+
+function applyFontFamily() {
+  document.documentElement.style.setProperty('--editor-font', FONTS[fontFamily]);
+  if (ui.fontSelect) ui.fontSelect.value = fontFamily;
+  localStorage.setItem(FONT_FAMILY_KEY, fontFamily);
+}
+
+function setFontFamily(name) {
+  if (FONTS[name]) { fontFamily = name; applyFontFamily(); }
+}
+
+(function initFontFamily() {
+  const stored = localStorage.getItem(FONT_FAMILY_KEY);
+  fontFamily = FONTS[stored] ? stored : 'serif';
+  applyFontFamily();
+})();
+
 // --- history (pure) ------------------------------------------------------
 
 function escapeHtmlText(s) {
@@ -644,6 +680,7 @@ ui.moreBtn?.addEventListener('click', () => {
 });
 ui.fontIncreaseBtn?.addEventListener('click', () => setFontSize(fontSize + 2));
 ui.fontDecreaseBtn?.addEventListener('click', () => setFontSize(fontSize - 2));
+ui.fontSelect?.addEventListener('change', (e) => setFontFamily(e.target.value));
 for (const btn of ui.widthButtons) {
   btn?.addEventListener('click', () => setTypeWidth(btn.dataset.width));
 }
