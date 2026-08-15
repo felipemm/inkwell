@@ -392,7 +392,7 @@ function updateGoal() {
 
 // --- quiet room: type width -------------------------------------------------
 
-const TYPE_WIDTHS = { narrow: 640, medium: 860, wide: 'calc(100% - 96px)' };
+const TYPE_WIDTHS = { narrow: 640, medium: 1118, wide: 'calc(100% - 96px)' };
 const TYPE_WIDTH_KEY = 'inkwell-type-width';
 let typeWidth = 'medium';
 

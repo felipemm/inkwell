@@ -22,7 +22,7 @@
   --overlay: rgba(0, 0, 0, 0.65);
   --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
   --editor-font-size: 18px;
-  --editor-max-width: 720px;
+  --editor-max-width: 1118px;
 
   --themes: dark light;
 }

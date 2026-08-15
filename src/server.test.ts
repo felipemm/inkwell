@@ -446,6 +446,7 @@ test("app.js contains reading time calculation and writing goal logic", async ()
   expect(text).toContain("setFontSize");
   expect(text).toContain("target_word_count");
   expect(text).toContain("TYPE_WIDTHS");
+  expect(text).toContain("medium: 1118");
   expect(text).toContain("calc(100% - 96px)");
   expect(text).toContain("setTypeWidth");
   expect(text).toContain("applyTypeWidth");
