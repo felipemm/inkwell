@@ -923,3 +923,31 @@ test("style.css styles the search snippet and its <mark> highlights", async () =
   expect(css).toContain(".post-snippet mark");
   expect(css).toContain("grid-column");
 });
+
+test("a fresh module's very first request is a search and still uses FTS5", async () => {
+  // Seed via the main server so the row exists in the shared INKWELL_DB file.
+  const seeded = await (
+    await post("/posts", { title: "Seed FTS", content: "zqzqfirstsearch faraway zqzqsecondterm" })
+  ).json();
+
+  // A query-string import yields a brand-new module instance: ftsAvailable is
+  // false and _db is null, exactly like a fresh server process. Regression for
+  // searchPosts() reading ftsAvailable before db() had ever run — under that
+  // bug the first request fell into likeSearchPosts, which cannot match the
+  // non-adjacent AND terms ("zqzqfirstsearch zqzqsecondterm" is not a
+  // contiguous substring), so this test fails without the db() call up front.
+  const fresh = await import(`./server.ts?fresh-first-search=${Date.now()}`);
+  const srv = Bun.serve({ port: 0, fetch: fresh.handleRequest });
+  const b = `http://localhost:${srv.port}`;
+  try {
+    const res = await fetch(`${b}/api/posts?q=zqzqfirstsearch zqzqsecondterm`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.some((p: { id: number }) => p.id === seeded.id)).toBe(true);
+    expect(data[0].snippet).toContain("<mark>");
+    expect(typeof data[0].rank).toBe("number");
+  } finally {
+    srv.stop(true);
+    fresh.closeDb();
+  }
+});

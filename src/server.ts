@@ -123,6 +123,10 @@ const SEARCH_SQL = `
 `;
 
 export function searchPosts(query: string): SearchRow[] {
+  // Ensure the db is opened and ftsAvailable is decided before branching:
+  // on a fresh process the first request may be a search, and db() is what
+  // creates posts_fts and flips the flag.
+  db();
   if (ftsAvailable) {
     try {
       // Fresh prepare per call: FTS5 can carry stale snippet/query state across
