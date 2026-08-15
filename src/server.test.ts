@@ -819,7 +819,7 @@ test("style.css contains styles for brand icon, brand alignment, and list-head c
   expect(css).toContain("align-items: center");
 });
 
-test("theme picker, five themes, and persistence are present", async () => {
+test("theme picker, eight themes, and persistence are present", async () => {
   const htmlRes = await fetch(`${base}/index.html`);
   const html = await htmlRes.text();
   expect(html).toContain('id="theme-select"');
@@ -827,14 +827,20 @@ test("theme picker, five themes, and persistence are present", async () => {
   expect(html).toContain('<option value="dark">Dark</option>');
   expect(html).toContain('<option value="sepia">Sepia</option>');
   expect(html).toContain('<option value="midnight">Midnight</option>');
+  expect(html).toContain('<option value="ocean">Ocean</option>');
+  expect(html).toContain('<option value="rose">Rose</option>');
+  expect(html).toContain('<option value="graphite">Graphite</option>');
 
   const cssRes = await fetch(`${base}/style.css`);
   const css = await cssRes.text();
-  expect(css).toContain("--themes: dark light sepia forest midnight");
+  expect(css).toContain("--themes: dark light sepia forest midnight ocean rose graphite");
   expect(css).toContain('[data-theme="light"]');
   expect(css).toContain('[data-theme="sepia"]');
   expect(css).toContain('[data-theme="forest"]');
   expect(css).toContain('[data-theme="midnight"]');
+  expect(css).toContain('[data-theme="ocean"]');
+  expect(css).toContain('[data-theme="rose"]');
+  expect(css).toContain('[data-theme="graphite"]');
 
   const jsRes = await fetch(`${base}/app.js`);
   const js = await jsRes.text();
