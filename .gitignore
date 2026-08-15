@@ -1,0 +1,15 @@
+# Runtime
+inkwell.db
+inkwell.db-shm
+inkwell.db-wal
+
+# Env
+.env
+.env.local
+
+# Node/Bun
+node_modules/
+
+# OS / editor
+.DS_Store
+*.swp
