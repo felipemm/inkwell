@@ -5,9 +5,9 @@ Why it matters: the writing lives in one sqlite file with no way out. A writer w
 draft into another tool, keep a copy in a git repo, or move machines has to select-all-copy post by
 post — and an app you cannot leave is an app you hesitate to commit to.
 
-Where: apps/inkwell/server.ts (export routes, import route, front-matter parse and serialize),
-apps/inkwell/public/app.js + index.html + style.css (export buttons, file input),
-apps/inkwell/server.test.ts (new tests).
+Where: src/server.ts (export routes, import route, front-matter parse and serialize),
+src/public/app.js + index.html + style.css (export buttons, file input),
+src/server.test.ts (new tests).
 
 Done means:
 1. GET /api/posts/:id/export returns 200 text/markdown: a --- delimited front-matter block holding
@@ -39,7 +39,7 @@ Constraints:
 - Write the front-matter parser by hand and keep it flat key: value only — no YAML library, no
   nesting, lists, anchors or multi-line scalars. Values containing a colon must survive intact.
 - Only the FIRST --- block at byte zero is front matter; a --- later in the body is content.
-- bun test apps/inkwell/server.test.ts stays green and gains tests for every numbered item.
+- bun test src/server.test.ts stays green and gains tests for every numbered item.
 
 Out of scope: zip archives, images or media, importing Jekyll/Hugo/WordPress/Notion formats,
 update-in-place or merge-on-conflict import, scheduled or automatic backups, drag-and-drop upload,

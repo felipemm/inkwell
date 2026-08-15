@@ -5,9 +5,9 @@ Why it matters: a writer with two hundred drafts searches for a half-remembered 
 substring. LIKE '%term%' scans every row, cannot rank, matches inside words, and hands back only a
 title — so the writer still opens four posts to find the line they meant.
 
-Where: apps/inkwell/server.ts (schema, triggers, the GET /api/posts query path),
-apps/inkwell/public/app.js + index.html + style.css (render the snippet under each hit),
-apps/inkwell/server.test.ts (new tests).
+Where: src/server.ts (schema, triggers, the GET /api/posts query path),
+src/public/app.js + index.html + style.css (render the snippet under each hit),
+src/server.test.ts (new tests).
 
 Done means:
 1. A posts_fts FTS5 virtual table over title and content is created on db open, backfilled once
@@ -33,7 +33,7 @@ Constraints:
   way and the tests must pass under both.
 - Migrate in place: an inkwell.db written before this change must keep working without being
   deleted, and its existing posts must be searchable.
-- bun test apps/inkwell/server.test.ts stays green and gains a test for every numbered item above.
+- bun test src/server.test.ts stays green and gains a test for every numbered item above.
 
 Out of scope: searching revisions or deleted posts, status/tag facets or filter chips, fuzzy or
 typo-tolerant matching, stemming beyond what FTS5 gives for free, pagination or infinite scroll, a

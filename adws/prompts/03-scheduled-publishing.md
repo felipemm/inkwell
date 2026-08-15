@@ -5,9 +5,9 @@ Why it matters: a writer finishes at midnight and wants the post to land Tuesday
 only lever is a manual toggle, so the choice is publish now or remember later — and the whole
 finished queue sits in the same undifferentiated draft pile as the unfinished work.
 
-Where: apps/inkwell/server.ts (publish_at column, the status machine, schedule + sweep routes),
-apps/inkwell/public/app.js + index.html + style.css (schedule control, scheduled state in the list),
-apps/inkwell/server.test.ts (new tests).
+Where: src/server.ts (publish_at column, the status machine, schedule + sweep routes),
+src/public/app.js + index.html + style.css (schedule control, scheduled state in the list),
+src/server.test.ts (new tests).
 
 Done means:
 1. status is exactly one of draft, scheduled, published. A publish_at column (ISO-8601 UTC, null
@@ -37,7 +37,7 @@ Constraints:
 - No setInterval, no timers, no background worker, no cron. Due-ness is decided by comparing
   timestamps at request time — that is what makes it testable and what makes it survive a restart.
 - Store UTC only. Never store a local-zone string in the db.
-- bun test apps/inkwell/server.test.ts stays green and gains tests for every numbered item.
+- bun test src/server.test.ts stays green and gains tests for every numbered item.
 
 Out of scope: recurring or repeating schedules, a timezone picker, scheduled unpublishing, email or
 webhook notification on publish, a calendar or queue view, editing publish_at through PUT

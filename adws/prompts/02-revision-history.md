@@ -5,9 +5,9 @@ Why it matters: the editor autosaves as you type, so a bad paragraph, a bad past
 accident is written to disk within a second and the previous wording is gone forever. Writers cut
 hard when they can get it back, and hedge when they cannot.
 
-Where: apps/inkwell/server.ts (revisions table, snapshot points, the four routes),
-apps/inkwell/public/app.js + index.html + style.css (history panel, diff view, restore),
-apps/inkwell/server.test.ts (new tests).
+Where: src/server.ts (revisions table, snapshot points, the four routes),
+src/public/app.js + index.html + style.css (history panel, diff view, restore),
+src/server.test.ts (new tests).
 
 Done means:
 1. A revisions table (id, post_id, title, content, word_count, reason, created_at), created on db
@@ -36,7 +36,7 @@ Constraints:
 - Bun + bun:sqlite, no new dependencies, vanilla JS. Write the line diff by hand and make it
   deterministic — same inputs, same array, every run.
 - Do not change the GET /api/posts summary shape; the existing exact-key assertion must still pass.
-- bun test apps/inkwell/server.test.ts stays green and gains tests for every numbered item.
+- bun test src/server.test.ts stays green and gains tests for every numbered item.
 
 Out of scope: word-level or character-level inline diffs, three-way merge, branching or named
 versions, per-revision authorship or comments, textarea-level undo/redo, changing the autosave

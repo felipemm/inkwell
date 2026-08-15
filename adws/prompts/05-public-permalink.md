@@ -5,9 +5,9 @@ Why it matters: publish is currently a flag with nowhere to point. There is no U
 send to a reader, and the only way to see the finished piece is inside the editor chrome that
 produced it. A permalink is what makes the publish button mean something.
 
-Where: apps/inkwell/server.ts (slug column, the /p/ route, the page template),
-apps/inkwell/public/markdown.js (extracted renderer), apps/inkwell/public/app.js + index.html +
-style.css (permalink link, read-view styles), apps/inkwell/server.test.ts (new tests).
+Where: src/server.ts (slug column, the /p/ route, the page template),
+src/public/markdown.js (extracted renderer), src/public/app.js + index.html +
+style.css (permalink link, read-view styles), src/server.test.ts (new tests).
 
 Done means:
 1. A slug TEXT UNIQUE column derived from the title on create and on title change: lowercased,
@@ -38,7 +38,7 @@ Constraints:
 - /p/ resolves before the static file handler and must not become a path traversal: a slug
   containing .. or / is a 404, not a file read.
 - /api/* behavior and static serving are otherwise untouched.
-- bun test apps/inkwell/server.test.ts stays green and gains tests for every numbered item.
+- bun test src/server.test.ts stays green and gains tests for every numbered item.
 
 Out of scope: RSS or Atom feeds, a sitemap, an index page listing all published posts, comments,
 OpenGraph or Twitter meta tags, custom domains, hand-editing a slug from the UI, caching headers or
