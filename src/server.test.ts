@@ -395,6 +395,17 @@ test("style.css contains focus-mode styles", async () => {
   expect(text).toContain("body.focus-mode .footer");
 });
 
+test("style.css draws a divider between the title and the text area", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const css = await res.text();
+
+  // slice just the standalone .title rule block (the shared
+  // ".title, .content, .preview" rule is not matched by ".title {")
+  const titleRule = css.slice(css.indexOf(".title {"), css.indexOf("}", css.indexOf(".title {")));
+  expect(titleRule).toContain("border-bottom: 1px solid var(--border)");
+});
+
 test("style.css contains editable surface styles", async () => {
   const res = await fetch(`${base}/style.css`);
   expect(res.status).toBe(200);
