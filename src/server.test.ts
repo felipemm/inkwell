@@ -1078,6 +1078,7 @@ test("LIKE fallback search still produces snippet and rank", async () => {
   const rows = likeSearchPosts("zqzqfallbackterm");
   const row = rows.find((p: { id: number }) => p.id === created.id);
   expect(row).toBeTruthy();
+  if (!row) throw new Error("row not found in LIKE fallback search");
   expect(typeof row.rank).toBe("number");
   expect(row.snippet).toContain("<mark>");
 });

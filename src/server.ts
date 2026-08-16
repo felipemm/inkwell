@@ -426,9 +426,9 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
         const tableInfo = db().query("PRAGMA table_info(posts)").all() as { name: string }[];
         const hasTagsColumn = tableInfo.some((col) => col.name === "tags");
 
-        const posts = hasTagsColumn
+        const posts: { title: string | null; tags?: string | null }[] = hasTagsColumn
           ? (db().query("SELECT title, tags FROM posts").all() as { title: string | null; tags?: string | null }[])
-          : (db().query("SELECT title FROM posts").all() as { title: string | null });
+          : (db().query("SELECT title FROM posts").all() as { title: string | null }[]);
 
         const tagCounts: Record<string, number> = {};
 
@@ -437,10 +437,10 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
 
           if (
             hasTagsColumn &&
-            typeof (post as { tags?: string | null }).tags === "string" &&
-            (post as { tags: string }).tags.trim() !== ""
+            typeof post.tags === "string" &&
+            post.tags.trim() !== ""
           ) {
-            const rawTags = (post as { tags: string }).tags.split(",");
+            const rawTags = post.tags.split(",");
             for (const rawTag of rawTags) {
               const trimmed = rawTag.trim();
               if (trimmed) {

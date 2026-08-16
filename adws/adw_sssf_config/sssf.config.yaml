@@ -36,6 +36,26 @@ observability:
   db: adws/adw_data/sssf.db        # tracer writes here directly; the UI polls it
   poll_ms: 500                     # visualizer live-poll cadence
 
+# Deterministic quality commands (kind="code" phases). Every check runs as a
+# gate: pass/fail lands in gate_results and the status dashboard's quality KPI.
+quality:
+  checks:
+    - name: test
+      area: backend
+      operation: build
+      argv: ["bun", "test"]
+      timeout_seconds: 600
+    - name: typecheck
+      area: backend
+      operation: typecheck
+      argv: ["bun", "x", "tsc", "--noEmit"]
+      timeout_seconds: 120
+    - name: build
+      area: backend
+      operation: build
+      argv: ["bun", "build", "src/server.ts", "--outdir", "/tmp/inkwell-build", "--target", "bun"]
+      timeout_seconds: 300
+
 agents:
   - name: planner
     model: litellm/deepseek-v4-flash-official
