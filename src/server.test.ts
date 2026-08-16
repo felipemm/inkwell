@@ -162,6 +162,8 @@ test("unknown id returns 404 {error: 'not found'} on every route", async () => {
     api(`/posts/${missing}/revisions/1`),
     api(`/posts/${missing}/revisions/1/diff`),
     post(`/posts/${missing}/revisions/1/restore`),
+    api(`/posts/${missing}/revisions/1/compare/2`),
+    post(`/posts/${missing}/revisions/1/revert`),
     post(`/posts/${missing}/schedule`),
     api(`/posts/${missing}/schedule`, { method: "DELETE" }),
   ];
@@ -1257,7 +1259,7 @@ test("at most 50 revisions per post — oldest pruned; deleting a post deletes i
   expect(rows.length).toBe(0); // cascade
 });
 
-test("GET /api/posts/:id/revisions returns newest-first {id, created_at, word_count, reason}", async () => {
+test("GET /api/posts/:id/revisions returns newest-first {id, created_at, title, word_count, reason, summary}", async () => {
   const created = await (await post("/posts", { title: "L", content: "one" })).json();
   await put(`/posts/${created.id}`, { content: "two" });
   const db = new Database(process.env.INKWELL_DB!);
@@ -1269,13 +1271,16 @@ test("GET /api/posts/:id/revisions returns newest-first {id, created_at, word_co
   expect(res.status).toBe(200);
   const list = await res.json();
   expect(list.length).toBe(2);
-  expect(Object.keys(list[0]).sort()).toEqual(["created_at", "id", "reason", "word_count"]);
+  expect(Object.keys(list[0]).sort()).toEqual(
+    ["created_at", "id", "reason", "summary", "title", "word_count"].sort(),
+  );
   expect(list[0].id).toBeGreaterThan(list[1].id); // newest first
   expect(list[0].reason).toBe("edit");
   expect(list[0].word_count).toBe(1); // pre-edit content "two" → one word
+  expect(list[0].title).toBe("L"); // snapshot holds the pre-edit title
+  expect(list[0].summary).toBe("two"); // first ~80 chars of the pre-edit content
   expect(typeof list[0].created_at).toBe("string");
-  expect(list[0]).not.toHaveProperty("content");
-  expect(list[0]).not.toHaveProperty("title");
+  expect(list[0]).not.toHaveProperty("content"); // summaries only — no full content
 
   const missing = await api("/posts/999999/revisions");
   expect(missing.status).toBe(404);
@@ -1368,6 +1373,56 @@ test("GET /api/posts/:id/revisions/:rev/diff diffs the snapshot against current 
   expect(cross.status).toBe(404);
 });
 
+test("GET /api/posts/:id/revisions/:a/compare/:b diffs two snapshots with counts and word delta", async () => {
+  const created = await (await post("/posts", { title: "C", content: "one\ntwo\nthree" })).json();
+  await put(`/posts/${created.id}`, { content: "one\nTWO\nthree\nfour" });
+  const db = new Database(process.env.INKWELL_DB!);
+  db.run("UPDATE revisions SET created_at = '2020-01-01T00:00:00.000Z'"); // force append
+  db.close();
+  await put(`/posts/${created.id}`, { content: "five six" });
+
+  // newest first: [snapshot("one\nTWO\nthree\nfour"), snapshot("one\ntwo\nthree")]
+  const list = await (await api(`/posts/${created.id}/revisions`)).json();
+  expect(list.length).toBe(2);
+  const a = await (await api(`/posts/${created.id}/revisions/${list[1].id}`)).json();
+  const b = await (await api(`/posts/${created.id}/revisions/${list[0].id}`)).json();
+  expect(a.content).toBe("one\ntwo\nthree");
+  expect(b.content).toBe("one\nTWO\nthree\nfour");
+
+  const res = await api(`/posts/${created.id}/revisions/${a.id}/compare/${b.id}`);
+  expect(res.status).toBe(200);
+  const cmp = await res.json();
+  expect(cmp.diff).toEqual([
+    { op: " ", text: "one" },
+    { op: "-", text: "two" },
+    { op: "+", text: "TWO" },
+    { op: " ", text: "three" },
+    { op: "+", text: "four" },
+  ]);
+  expect(cmp.added).toBe(2); // "+" lines
+  expect(cmp.removed).toBe(1); // "-" lines
+  expect(cmp.word_delta).toBe(1); // wordCount(b) - wordCount(a) = 4 - 3
+
+  // same revision on both sides → empty change, all context lines
+  const same = await (await api(`/posts/${created.id}/revisions/${a.id}/compare/${a.id}`)).json();
+  expect(same.added).toBe(0);
+  expect(same.removed).toBe(0);
+  expect(same.word_delta).toBe(0);
+  expect(same.diff.length).toBeGreaterThan(0);
+  expect(same.diff.every((op: any) => op.op === " ")).toBe(true);
+
+  // unknown revision id → 404
+  const unknown = await api(`/posts/${created.id}/revisions/999999/compare/${a.id}`);
+  expect(unknown.status).toBe(404);
+  expect(await unknown.json()).toEqual({ error: "not found" });
+
+  // a revision that exists but belongs to another post → 400
+  const other = await (await post("/posts", { title: "O", content: "x" })).json();
+  const cross = await api(`/posts/${other.id}/revisions/${a.id}/compare/${b.id}`);
+  expect(cross.status).toBe(400);
+  expect((await cross.json()).error).toBeTruthy();
+});
+
 test("restore snapshots the pre-restore state first, applies the revision, and is undoable", async () => {
   const created = await (await post("/posts", { title: "R", content: "one" })).json();
   await put(`/posts/${created.id}`, { content: "two" });
@@ -1405,6 +1460,42 @@ test("restore snapshots the pre-restore state first, applies the revision, and i
   const other = await (await post("/posts", { title: "O", content: "x" })).json();
   const cross = await post(`/posts/${other.id}/revisions/${revTwo.id}/restore`);
   expect(cross.status).toBe(404);
+});
+
+test("POST /api/posts/:id/revisions/:rev/revert restores content and snapshots the pre-revert state", async () => {
+  const created = await (await post("/posts", { title: "V", content: "one" })).json();
+  await put(`/posts/${created.id}`, { content: "two" });
+  const db = new Database(process.env.INKWELL_DB!);
+  db.run("UPDATE revisions SET created_at = '2020-01-01T00:00:00.000Z'"); // force append
+  db.close();
+  await put(`/posts/${created.id}`, { content: "three" });
+
+  const list = await (await api(`/posts/${created.id}/revisions`)).json();
+  const revTwo = await (await api(`/posts/${created.id}/revisions/${list[0].id}`)).json();
+  expect(revTwo.content).toBe("two"); // newest snapshot holds the pre-edit state of the last PUT
+
+  await Bun.sleep(5);
+  const before = await (await api(`/posts/${created.id}`)).json();
+
+  const res = await post(`/posts/${created.id}/revisions/${revTwo.id}/revert`);
+  expect(res.status).toBe(200);
+  const reverted = await res.json();
+  expect(reverted.title).toBe("V");
+  expect(reverted.content).toBe("two");
+  expect(reverted.updated_at > before.updated_at).toBe(true);
+
+  // the pre-revert state ("three") was snapshotted first — a revert is undoable
+  const after = await (await api(`/posts/${created.id}/revisions`)).json();
+  expect(after.length).toBe(3);
+  expect(after[0].reason).toBe("restore");
+  const preRevert = await (await api(`/posts/${created.id}/revisions/${after[0].id}`)).json();
+  expect(preRevert.content).toBe("three");
+
+  // unknown post, unknown revision, and cross-post revision → 404
+  expect((await post(`/posts/999999/revisions/${revTwo.id}/revert`)).status).toBe(404);
+  expect((await post(`/posts/${created.id}/revisions/999999/revert`)).status).toBe(404);
+  const other = await (await post("/posts", { title: "O", content: "x" })).json();
+  expect((await post(`/posts/${other.id}/revisions/${revTwo.id}/revert`)).status).toBe(404);
 });
 
 test("index.html contains the history control in the footer and the history panel", async () => {
