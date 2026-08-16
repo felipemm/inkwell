@@ -55,6 +55,11 @@ quality:
       operation: build
       argv: ["bun", "build", "src/server.ts", "--outdir", "/tmp/inkwell-build", "--target", "bun"]
       timeout_seconds: 300
+    - name: snyk
+      area: backend
+      operation: security
+      argv: ["snyk", "test"]
+      timeout_seconds: 300
 
 agents:
   - name: planner
