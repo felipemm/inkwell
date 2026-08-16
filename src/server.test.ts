@@ -481,6 +481,59 @@ test("app.js contains reading time calculation and writing goal logic", async ()
   expect(text).toContain("applyTypeWidth");
 });
 
+test("index.html contains footer statistics readouts (chars, paragraphs, sentences)", async () => {
+  const res = await fetch(`${base}/index.html`);
+  expect(res.status).toBe(200);
+  const html = await res.text();
+  // the readouts live in the editor footer (last </footer> in the document)
+  const footer = html.slice(html.indexOf('<footer class="footer">'), html.lastIndexOf("</footer>"));
+  expect(footer).toContain('id="char-count"');
+  expect(footer).toContain('id="para-count"');
+  expect(footer).toContain('id="sentence-count"');
+});
+
+test("footer statistics counters: countChars, countParagraphs, countSentences (pure section)", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+
+  const { countChars, countParagraphs, countSentences } = loadSection<any>(js, "footer statistics (pure)", [
+    "countChars",
+    "countParagraphs",
+    "countSentences",
+  ]);
+
+  expect(countChars("")).toBe(0);
+  expect(countChars("hello world")).toBe(11);
+  expect(countChars("a\nb")).toBe(3);
+
+  expect(countParagraphs("")).toBe(0);
+  expect(countParagraphs("   ")).toBe(0);
+  expect(countParagraphs("one")).toBe(1);
+  expect(countParagraphs("one\n\ntwo")).toBe(2);
+  expect(countParagraphs("one\n\n\ntwo")).toBe(2);
+  expect(countParagraphs("one\n\ntwo\n\n")).toBe(2);
+
+  expect(countSentences("")).toBe(0);
+  expect(countSentences("Hi there")).toBe(1);
+  expect(countSentences("Hello world.")).toBe(1);
+  expect(countSentences("Hello. World!")).toBe(2);
+  expect(countSentences("One. Two. Three?")).toBe(3);
+  expect(countSentences("...")).toBe(0);
+});
+
+test("app.js wires the new footer readouts into updateWordCount", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+  expect(js).toContain("ui.chars.textContent");
+  expect(js).toContain("ui.paras.textContent");
+  expect(js).toContain("ui.sentences.textContent");
+  expect(js).toContain("countChars(ui.content.value)");
+  expect(js).toContain("countParagraphs(ui.content.value)");
+  expect(js).toContain("countSentences(ui.content.value)");
+});
+
 test("index.html contains the font family picker with at least 10 options", async () => {
   const res = await fetch(`${base}/index.html`);
   expect(res.status).toBe(200);

@@ -15,6 +15,9 @@ const ui = {
   searchInput: el('search-input'),
   searchClear: el('search-clear'),
   readingTime: el('reading-time'),
+  chars: el('char-count'),
+  paras: el('para-count'),
+  sentences: el('sentence-count'),
   targetWords: el('target-words'),
   goalProgress: el('goal-progress'),
   goalContainer: el('goal-container'),
@@ -183,6 +186,21 @@ function relTime(ts) {
 
 const countWords = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
+// --- footer statistics (pure) ------------------------------------------------------
+const countChars = (text) => text.length;
+
+const countParagraphs = (text) => {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\n\s*\n/).length;
+};
+
+const countSentences = (text) => {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/[.!?…]+(?=\s|$)/).filter((s) => s.trim().length > 0).length;
+};
+
 // --- rendering ------------------------------------------------------------
 
 function renderList() {
@@ -245,6 +263,14 @@ function updateWordCount() {
   ui.words.textContent = `${n} ${n === 1 ? 'word' : 'words'}`;
   const minutes = calcReadingTime(n);
   ui.readingTime.textContent = minutes ? `${minutes} min read` : '';
+
+  const chars = countChars(ui.content.value);
+  ui.chars.textContent = `${chars} ${chars === 1 ? 'char' : 'chars'}`;
+  const paras = countParagraphs(ui.content.value);
+  ui.paras.textContent = `${paras} ${paras === 1 ? 'paragraph' : 'paragraphs'}`;
+  const sentences = countSentences(ui.content.value);
+  ui.sentences.textContent = `${sentences} ${sentences === 1 ? 'sentence' : 'sentences'}`;
+
   updateGoal();
   updateTotals();
 }
