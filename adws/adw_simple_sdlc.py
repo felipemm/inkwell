@@ -57,8 +57,12 @@ DOCUMENT_NOTES = ("Read diff_path in full before writing. Document only what the
 
 def main(prompt: str, config: str = "adws/adw_sssf_config/sssf.config.yaml", adw_id: str | None = None) -> int:
     cfg = agents.load_config(config)
-    agents.validate(cfg, REQUIRED_AGENTS)
+    # Create the session BEFORE validating: a validation failure (e.g. pi
+    # --list-models hiccuping under concurrent container boots) then leaves a
+    # visible failed session instead of nothing — the board/trace show what
+    # happened and the run is reconcileable.
     run = session.ensure(cfg, adw_id)
+    agents.validate(cfg, REQUIRED_AGENTS)
     baseline = git_helper.rev("HEAD")     # pinned before this run commits anything
 
     def commit(ph, envelope, *, allow_empty=False) -> bool:
@@ -99,19 +103,19 @@ def main(prompt: str, config: str = "adws/adw_sssf_config/sssf.config.yaml", adw
     test = None
     for i in range(1, MAX_FIX_LOOPS + 1):
         with run.phase(PhaseParams(name=f"test_{i}", kind="code", owner="quality",
-                                   description="Run the suite — a known command, so code runs "
-                                               "it and no agent has to rediscover it")) as ph:
-            test = quality.run_tests(run)
+                                   description="Run every quality gate — known commands, so code "
+                                               "runs them and no agent has to rediscover them")) as ph:
+            test = quality.run_quality(run)
             record(ph, test)
 
         if test.passed:
             break
 
         with run.phase(PhaseParams(name=f"fix_{i}", kind="agent", owner="builder", retries=1,
-                                   description="Repair what the suite reported, from its "
+                                   description="Repair what the gates reported, from their "
                                                "verbatim output")) as ph:
             build = ph.call(AgentCall(output_type=BuildOutput, prompt=prompt,
-                                      previous=quality.as_envelope(test, "tests"),
+                                      previous=quality.as_envelope(test, "quality gates"),
                                       gates=[gates.diff_matches_claims]))
 
     review = None
@@ -135,9 +139,9 @@ def main(prompt: str, config: str = "adws/adw_sssf_config/sssf.config.yaml", adw
     # stale. Re-run it rather than commit on a result that predates the change.
     if revised and review is not None and review.approved:
         with run.phase(PhaseParams(name="retest", kind="code", owner="quality",
-                                   description="Re-run the suite — the revision changed code "
+                                   description="Re-run the gates — the revision changed code "
                                                "after the last green result")) as ph:
-            test = quality.run_tests(run)
+            test = quality.run_quality(run)
             record(ph, test)
 
     # Red tests or a rejected review stop the chain here: the code stays
