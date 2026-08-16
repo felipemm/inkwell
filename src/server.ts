@@ -2,6 +2,7 @@
 // Run: bun run src/server.ts   (PORT and INKWELL_DB env overrides supported)
 
 import { Database } from "bun:sqlite";
+import { renderMarkdown, readingMinutes } from "./markdown.ts";
 
 const APP_DIR = import.meta.dir;
 const PUBLIC_DIR = `${APP_DIR}/public`;
@@ -212,6 +213,7 @@ type SummaryRow = {
   updated_at: string;
   word_count: number;
   target_word_count: number;
+  reading_minutes: number;
 };
 
 type SearchRow = SummaryRow & { snippet: string; rank: number };
@@ -223,6 +225,7 @@ const summarize = (p: Post): SummaryRow => ({
   updated_at: p.updated_at,
   word_count: wordCount(p.content ?? ""),
   target_word_count: p.target_word_count ?? 0,
+  reading_minutes: readingMinutes(wordCount(p.content ?? "")),
 });
 
 /** Turns free text into an FTS5 query: each whitespace-separated term becomes a prefix term. */
@@ -267,6 +270,7 @@ export function searchPosts(query: string): SearchRow[] {
         updated_at: r.updated_at,
         word_count: wordCount(r.content ?? ""),
         target_word_count: r.target_word_count ?? 0,
+        reading_minutes: readingMinutes(wordCount(r.content ?? "")),
         snippet: r.snippet ?? "",
         rank: r.rank,
       }));
@@ -335,6 +339,7 @@ export function likeSearchPosts(query: string): SearchRow[] {
         updated_at: p.updated_at,
         word_count: wordCount(content),
         target_word_count: p.target_word_count ?? 0,
+        reading_minutes: readingMinutes(wordCount(content)),
         snippet: makeSnippet(src, lowerQuery),
         rank: -(2 * titleHits + contentHits),
       };
@@ -393,6 +398,26 @@ async function serveStatic(pathname: string): Promise<Response> {
   });
 }
 
+/** Tags for one post: explicit comma-separated tags column when present,
+ *  else hashtags parsed from the title (trailing punctuation stripped).
+ *  Mirrors the /api/tags endpoint's per-post derivation exactly. */
+function postTags(title: string | null, explicit: string | null | undefined): string[] {
+  const tags = new Set<string>();
+  if (typeof explicit === "string" && explicit.trim() !== "") {
+    for (const rawTag of explicit.split(",")) {
+      const trimmed = rawTag.trim();
+      if (trimmed) tags.add(trimmed);
+    }
+  } else {
+    const hashtagMatches = (title ?? "").match(/#([^\s#]+)/g) || [];
+    for (const match of hashtagMatches) {
+      const tag = match.slice(1).replace(/[.,!?:;'"()\[\]{}]+$/, "").trim();
+      if (tag) tags.add(tag);
+    }
+  }
+  return [...tags];
+}
+
 // ─── api ───────────────────────────────────────────────────────────────────
 async function handleApi(req: Request, pathname: string): Promise<Response> {
   const segments = pathname.split("/").filter(Boolean); // ["api", "posts", ...]
@@ -433,32 +458,7 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
         const tagCounts: Record<string, number> = {};
 
         for (const post of posts) {
-          const postTags = new Set<string>();
-
-          if (
-            hasTagsColumn &&
-            typeof post.tags === "string" &&
-            post.tags.trim() !== ""
-          ) {
-            const rawTags = post.tags.split(",");
-            for (const rawTag of rawTags) {
-              const trimmed = rawTag.trim();
-              if (trimmed) {
-                postTags.add(trimmed);
-              }
-            }
-          } else {
-            const title = post.title ?? "";
-            const hashtagMatches = title.match(/#([^\s#]+)/g) || [];
-            for (const match of hashtagMatches) {
-              const tag = match.slice(1).replace(/[.,!?:;'"()\[\]{}]+$/, "").trim();
-              if (tag) {
-                postTags.add(tag);
-              }
-            }
-          }
-
-          for (const tag of postTags) {
+          for (const tag of postTags(post.title, post.tags)) {
             tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
           }
         }
@@ -581,6 +581,23 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     });
   }
 
+  // /api/posts/:id/render — server-side markdown → HTML + reading time
+  if (segments.length === 4 && segments[3] === "render") {
+    if (method !== "GET") return json({ error: "method not allowed" }, 405);
+    const post = getPost(id);
+    if (!post) return notFound();
+    const content = post.content ?? "";
+    const wc = wordCount(content);
+    return json({
+      id: post.id,
+      title: post.title,
+      html: renderMarkdown(content),
+      reading_minutes: readingMinutes(wc),
+      word_count: wc,
+      tags: postTags(post.title, (post as { tags?: string | null }).tags),
+    });
+  }
+
   // /api/posts/:id/revisions
   if (segments.length === 4 && segments[3] === "revisions") {
     if (method !== "GET") return json({ error: "method not allowed" }, 405);
@@ -644,7 +661,9 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     const post = getPost(id);
     if (!post) return notFound();
 
-    if (method === "GET") return json(post);
+    if (method === "GET") {
+      return json({ ...post, reading_minutes: readingMinutes(wordCount(post.content ?? "")) });
+    }
 
     if (method === "PUT") {
       const body = await readBody(req);
