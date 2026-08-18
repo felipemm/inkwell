@@ -90,7 +90,7 @@ test("full lifecycle: create → list → update → publish toggle → delete",
   const list = await (await api("/posts")).json();
   const summary = list.find((p: { id: number }) => p.id === id);
   expect(Object.keys(summary).sort()).toEqual(
-    ["id", "status", "title", "updated_at", "word_count", "target_word_count"].sort(),
+    ["id", "reading_minutes", "status", "title", "updated_at", "word_count", "target_word_count"].sort(),
   );
   expect(summary.word_count).toBe(3);
   expect(list[0].id).toBe(id); // most recently updated
@@ -166,6 +166,7 @@ test("unknown id returns 404 {error: 'not found'} on every route", async () => {
     post(`/posts/${missing}/revisions/1/revert`),
     post(`/posts/${missing}/schedule`),
     api(`/posts/${missing}/schedule`, { method: "DELETE" }),
+    api(`/posts/${missing}/render`),
   ];
   for (const res of await Promise.all(routes)) {
     expect(res.status).toBe(404);
@@ -680,6 +681,105 @@ test("GET /api/posts/:id/stats returns post stats and 404 for unknown id", async
   expect(await postRes.json()).toEqual({ error: "method not allowed" });
 });
 
+test("GET /api/posts/:id/render renders markdown to html with reading time", async () => {
+  const created = await (
+    await post("/posts", {
+      title: "Render Me #demo",
+      content: "# Title\n\nA paragraph with **bold**.\n\n- one\n- two\n\n```\nlet x = 1;\n```\n\n[link](https://example.com)",
+    })
+  ).json();
+
+  const res = await api(`/posts/${created.id}/render`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("application/json");
+  const data = await res.json();
+  expect(Object.keys(data).sort()).toEqual(
+    ["html", "id", "reading_minutes", "tags", "title", "word_count"].sort(),
+  );
+  expect(data.id).toBe(created.id);
+  expect(data.title).toBe("Render Me #demo");
+  expect(data.html).toContain("<h1>Title</h1>");
+  expect(data.html).toContain("<p>");
+  expect(data.html).toContain("<ul>");
+  expect(data.html).toContain("<li>one</li>");
+  expect(data.html).toContain("<pre><code>");
+  expect(data.html).toContain('<a href="https://example.com">');
+  expect(data.word_count).toBeGreaterThan(0);
+  expect(data.reading_minutes).toBeGreaterThanOrEqual(1);
+  // tags fall back to the title hashtag (no tags column in this db)
+  expect(data.tags).toEqual(["demo"]);
+});
+
+test("render endpoint escapes raw HTML and neutralizes javascript: links", async () => {
+  // raw HTML is escaped, never passed through
+  const script = await (await post("/posts", { content: "<script>alert(1)</script>" })).json();
+  const scriptHtml = (await (await api(`/posts/${script.id}/render`)).json()).html;
+  expect(scriptHtml).not.toMatch(/<script/i);
+  expect(scriptHtml).toContain("&lt;script&gt;");
+
+  // javascript: link destination is neutralized
+  const jsLink = await (await post("/posts", { content: "[x](javascript:alert(1))" })).json();
+  const jsHtml = (await (await api(`/posts/${jsLink.id}/render`)).json()).html;
+  expect(jsHtml).not.toMatch(/href="javascript:/i);
+
+  // combined: a post with both a script tag and a javascript: link stays inert
+  const mixed = await (
+    await post("/posts", { content: "<script>alert(1)</script> and [x](javascript:alert(1))" })
+  ).json();
+  const mixedHtml = (await (await api(`/posts/${mixed.id}/render`)).json()).html;
+  expect(mixedHtml).not.toMatch(/<script/i);
+  expect(mixedHtml).toContain("&lt;script&gt;");
+  expect(mixedHtml).not.toMatch(/href="javascript:/i);
+});
+
+test("reading minutes: short post = 1, ~400 words = 2, on render and list", async () => {
+  const short = await (await post("/posts", { content: "one" })).json();
+  const shortRender = await (await api(`/posts/${short.id}/render`)).json();
+  expect(shortRender.reading_minutes).toBe(1);
+  expect(shortRender.word_count).toBe(1);
+
+  const long = await (await post("/posts", { content: Array(400).fill("word").join(" ") })).json();
+  const longRender = await (await api(`/posts/${long.id}/render`)).json();
+  expect(longRender.reading_minutes).toBe(2);
+  expect(longRender.word_count).toBe(400);
+
+  // the list summary carries the same numbers
+  const list = await (await api("/posts")).json();
+  expect(list.find((p: { id: number }) => p.id === short.id).reading_minutes).toBe(1);
+  expect(list.find((p: { id: number }) => p.id === long.id).reading_minutes).toBe(2);
+});
+
+test("render endpoint 404s for an unknown post and 405s for non-GET", async () => {
+  const missing = await api("/posts/999999/render");
+  expect(missing.status).toBe(404);
+  expect(await missing.json()).toEqual({ error: "not found" });
+
+  const created = await (await post("/posts", { content: "x" })).json();
+  const postRes = await post(`/posts/${created.id}/render`);
+  expect(postRes.status).toBe(405);
+  expect(await postRes.json()).toEqual({ error: "method not allowed" });
+});
+
+test("list, single-post, and search responses carry numeric reading_minutes; summaries have no html", async () => {
+  const created = await (await post("/posts", { title: "zqzqsummaryterm body", content: "one two three four five" })).json();
+
+  const list = await (await api("/posts")).json();
+  const listItem = list.find((p: { id: number }) => p.id === created.id);
+  expect(typeof listItem.reading_minutes).toBe("number");
+  expect(listItem.reading_minutes).toBe(1);
+  expect(listItem).not.toHaveProperty("html");
+
+  const single = await (await api(`/posts/${created.id}`)).json();
+  expect(typeof single.reading_minutes).toBe("number");
+  expect(single.reading_minutes).toBe(1);
+
+  const search = await (await api("/posts?q=zqzqsummaryterm")).json();
+  const row = search.find((p: { id: number }) => p.id === created.id);
+  expect(row).toBeTruthy();
+  expect(typeof row.reading_minutes).toBe("number");
+  expect(row).not.toHaveProperty("html");
+});
+
 test("GET /api/stats returns counts of total, published, and draft posts, and total_words", async () => {
   // Get initial stats
   const initialRes = await api("/stats");
@@ -988,7 +1088,7 @@ test("search response rows carry exactly snippet and rank beyond the summary key
   const row = res.find((p: { id: number }) => p.id === created.id);
   expect(row).toBeTruthy();
   expect(Object.keys(row).sort()).toEqual(
-    ["id", "status", "title", "updated_at", "word_count", "target_word_count", "snippet", "rank"].sort(),
+    ["id", "reading_minutes", "status", "title", "updated_at", "word_count", "target_word_count", "snippet", "rank"].sort(),
   );
   expect(typeof row.rank).toBe("number");
   expect(typeof row.snippet).toBe("string");
@@ -1748,7 +1848,7 @@ test("GET /api/posts/:id includes publish_at; the list summary shape is unchange
   const list = await (await api("/posts")).json();
   const summary = list.find((p: { id: number }) => p.id === created.id);
   expect(Object.keys(summary).sort()).toEqual(
-    ["id", "status", "title", "updated_at", "word_count", "target_word_count"].sort(),
+    ["id", "reading_minutes", "status", "title", "updated_at", "word_count", "target_word_count"].sort(),
   );
   expect(summary.status).toBe("scheduled");
 });
