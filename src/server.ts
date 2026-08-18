@@ -19,17 +19,13 @@ type Post = {
   updated_at: string;
 };
 
-const COALESCE_MS = 60_000;
-const MAX_REVISIONS_PER_POST = 50;
-
-type Revision = {
+type PostRevision = {
   id: number;
   post_id: number;
   title: string | null;
   content: string | null;
-  word_count: number;
-  reason: string;
   created_at: string;
+  word_count: number;
 };
 
 // ─── db ────────────────────────────────────────────────────────────────────
@@ -73,6 +69,15 @@ function db(): Database {
     created_at TEXT
   )`);
   _db.run("CREATE INDEX IF NOT EXISTS idx_revisions_post ON revisions(post_id, id DESC)");
+  _db.run(`CREATE TABLE IF NOT EXISTS post_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    title TEXT,
+    content TEXT,
+    created_at TEXT,
+    word_count INTEGER DEFAULT 0
+  )`);
+  _db.run("CREATE INDEX IF NOT EXISTS idx_post_revisions_post ON post_revisions(post_id, id DESC)");
   try {
     _db.run("CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts5(title, content)");
     ftsAvailable = true;
@@ -131,36 +136,13 @@ function sweepScheduled(): number[] {
   return due.map((r) => r.id);
 }
 
-/** Snapshots a post's pre-edit state. 'edit' snapshots coalesce: if the newest
- *  revision for this post is an 'edit' younger than 60s, it is overwritten
- *  (created_at bumped — sliding window) instead of appending. Publish,
- *  unpublish, and restore snapshots never coalesce — they always append.
- *  Every insert is pruned to the newest MAX_REVISIONS_PER_POST. */
-function snapshotPost(post: Post, reason: string): void {
-  const conn = db();
-  const newest = conn
-    .query("SELECT id, reason, created_at FROM revisions WHERE post_id = ? ORDER BY id DESC LIMIT 1")
-    .get(post.id) as { id: number; reason: string; created_at: string } | null;
-  const ts = now();
-  const title = post.title ?? "";
-  const content = post.content ?? "";
-  const wc = wordCount(content);
-  if (reason === "edit" && newest && newest.reason === "edit" && Date.now() - Date.parse(newest.created_at) < COALESCE_MS) {
-    conn.run(
-      "UPDATE revisions SET title = ?, content = ?, word_count = ?, created_at = ? WHERE id = ?",
-      [title, content, wc, ts, newest.id],
-    );
-    return;
-  }
-  conn.run(
-    "INSERT INTO revisions (post_id, title, content, word_count, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    [post.id, title, content, wc, reason, ts],
-  );
-  conn.run(
-    `DELETE FROM revisions WHERE post_id = ? AND id NOT IN (
-       SELECT id FROM revisions WHERE post_id = ? ORDER BY id DESC LIMIT ?
-     )`,
-    [post.id, post.id, MAX_REVISIONS_PER_POST],
+/** Snapshots a post's pre-edit state into post_revisions. Every title/content
+ *  edit appends one immutable revision — no coalescing, no pruning cap, so
+ *  nothing a writer writes is ever lost. Creating a post does not snapshot. */
+function snapshotRevision(post: Post): void {
+  db().run(
+    "INSERT INTO post_revisions (post_id, title, content, created_at, word_count) VALUES (?, ?, ?, ?, ?)",
+    [post.id, post.title ?? "", post.content ?? "", now(), wordCount(post.content ?? "")],
   );
 }
 
@@ -531,7 +513,6 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     const post = getPost(id);
     if (!post) return notFound();
     const status = post.status === "published" ? "draft" : "published";
-    snapshotPost(post, post.status === "published" ? "unpublish" : "publish");
     db().run("UPDATE posts SET status = ?, publish_at = NULL, updated_at = ? WHERE id = ?", [status, now(), id]);
     return json(getPost(id));
   }
@@ -603,30 +584,71 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     if (method !== "GET") return json({ error: "method not allowed" }, 405);
     if (!getPost(id)) return notFound();
     const rows = db()
-      .query("SELECT id, title, content, created_at, word_count, reason FROM revisions WHERE post_id = ? ORDER BY id DESC")
-      .all(id) as { id: number; title: string | null; content: string | null; created_at: string; word_count: number; reason: string }[];
-    return json(
-      rows.map((r) => ({
-        id: r.id,
-        created_at: r.created_at,
-        title: r.title ?? "",
-        word_count: r.word_count,
-        reason: r.reason,
-        summary: (r.content ?? "").slice(0, 80),
-      })),
-    );
+      .query("SELECT id, title, content, created_at, word_count FROM post_revisions WHERE post_id = ? ORDER BY id DESC")
+      .all(id) as { id: number; title: string | null; content: string | null; created_at: string; word_count: number }[];
+    return json(rows.map((r) => ({
+      id: r.id,
+      created_at: r.created_at,
+      title: r.title,
+      word_count: r.word_count,
+      summary: (r.content ?? "").slice(0, 80),
+    })));
   }
 
-  // /api/posts/:id/revisions/:rev
+  // /api/posts/:id/revisions/:revId
   if (segments.length === 5 && segments[3] === "revisions") {
     const revId = Number(segments[4]);
     if (!Number.isInteger(revId)) return notFound();
     if (method !== "GET") return json({ error: "method not allowed" }, 405);
-    const rev = db().query("SELECT * FROM revisions WHERE id = ? AND post_id = ?").get(revId, id) as
-      | Revision
+    if (!getPost(id)) return notFound();
+    const rev = db().query("SELECT * FROM post_revisions WHERE id = ? AND post_id = ?").get(revId, id) as
+      | PostRevision
       | null;
     if (!rev) return notFound();
     return json(rev);
+  }
+
+  // /api/posts/:id/revisions/:a/compare/:b
+  if (segments.length === 7 && segments[3] === "revisions" && segments[5] === "compare") {
+    const a = Number(segments[4]);
+    const b = Number(segments[6]);
+    if (!Number.isInteger(a) || !Number.isInteger(b)) return notFound();
+    if (method !== "GET") return json({ error: "method not allowed" }, 405);
+    if (!getPost(id)) return notFound();
+    const revA = db().query("SELECT * FROM post_revisions WHERE id = ?").get(a) as PostRevision | null;
+    if (!revA) return notFound(); // unknown revision → 404
+    if (revA.post_id !== id) return json({ error: "revision does not belong to this post" }, 400);
+    const revB = db().query("SELECT * FROM post_revisions WHERE id = ?").get(b) as PostRevision | null;
+    if (!revB) return notFound(); // unknown revision → 404
+    if (revB.post_id !== id) return json({ error: "revision does not belong to this post" }, 400);
+    const lines = lineDiff(revA.content ?? "", revB.content ?? "");
+    return json({
+      lines,
+      added: lines.filter((l) => l.op === "+").length,
+      removed: lines.filter((l) => l.op === "-").length,
+      word_delta: wordCount(revB.content ?? "") - wordCount(revA.content ?? ""),
+    });
+  }
+
+  // /api/posts/:id/revisions/:revId/revert
+  if (segments.length === 6 && segments[3] === "revisions" && segments[5] === "revert") {
+    const revId = Number(segments[4]);
+    if (!Number.isInteger(revId)) return notFound();
+    if (method !== "POST") return json({ error: "method not allowed" }, 405);
+    const post = getPost(id);
+    if (!post) return notFound();
+    const rev = db().query("SELECT * FROM post_revisions WHERE id = ? AND post_id = ?").get(revId, id) as
+      | PostRevision
+      | null;
+    if (!rev) return notFound();
+    snapshotRevision(post); // current state becomes a revision — same rule as an edit
+    db().run("UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?", [
+      rev.title ?? "",
+      rev.content ?? "",
+      now(),
+      id,
+    ]);
+    return json(getPost(id));
   }
 
   // /api/posts/:id/revisions/:rev/diff
@@ -637,69 +659,24 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     const post = getPost(id);
     if (!post) return notFound();
     const rev = db()
-      .query("SELECT content FROM revisions WHERE id = ? AND post_id = ?")
+      .query("SELECT content FROM post_revisions WHERE id = ? AND post_id = ?")
       .get(revId, id) as { content: string | null } | null;
     if (!rev) return notFound();
     return json(lineDiff(rev.content ?? "", post.content ?? ""));
   }
 
-  // /api/posts/:id/revisions/:rev/restore
+  // /api/posts/:id/revisions/:rev/restore — legacy alias for revert
   if (segments.length === 6 && segments[3] === "revisions" && segments[5] === "restore") {
     const revId = Number(segments[4]);
     if (!Number.isInteger(revId)) return notFound();
     if (method !== "POST") return json({ error: "method not allowed" }, 405);
     const post = getPost(id);
     if (!post) return notFound();
-    const rev = db().query("SELECT * FROM revisions WHERE id = ? AND post_id = ?").get(revId, id) as
-      | Revision
+    const rev = db().query("SELECT * FROM post_revisions WHERE id = ? AND post_id = ?").get(revId, id) as
+      | PostRevision
       | null;
     if (!rev) return notFound();
-    snapshotPost(post, "restore"); // pre-restore state first — a restore is itself undoable
-    db().run("UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?", [
-      rev.title ?? "",
-      rev.content ?? "",
-      now(),
-      id,
-    ]);
-    return json(getPost(id));
-  }
-
-  // /api/posts/:id/revisions/:a/compare/:b — diff between two snapshots
-  if (segments.length === 7 && segments[3] === "revisions" && segments[5] === "compare") {
-    const aId = Number(segments[4]);
-    const bId = Number(segments[6]);
-    if (!Number.isInteger(aId) || !Number.isInteger(bId)) return notFound();
-    if (method !== "GET") return json({ error: "method not allowed" }, 405);
-    const post = getPost(id);
-    if (!post) return notFound();
-    const a = db().query("SELECT * FROM revisions WHERE id = ?").get(aId) as Revision | null;
-    if (!a) return notFound();
-    const b = db().query("SELECT * FROM revisions WHERE id = ?").get(bId) as Revision | null;
-    if (!b) return notFound();
-    if (a.post_id !== id || b.post_id !== id) {
-      return json({ error: "revision does not belong to this post" }, 400);
-    }
-    const diff = lineDiff(a.content ?? "", b.content ?? "");
-    return json({
-      diff,
-      added: diff.filter((d) => d.op === "+").length,
-      removed: diff.filter((d) => d.op === "-").length,
-      word_delta: wordCount(b.content ?? "") - wordCount(a.content ?? ""),
-    });
-  }
-
-  // /api/posts/:id/revisions/:rev/revert — spec name for the restore contract
-  if (segments.length === 6 && segments[3] === "revisions" && segments[5] === "revert") {
-    const revId = Number(segments[4]);
-    if (!Number.isInteger(revId)) return notFound();
-    if (method !== "POST") return json({ error: "method not allowed" }, 405);
-    const post = getPost(id);
-    if (!post) return notFound();
-    const rev = db().query("SELECT * FROM revisions WHERE id = ? AND post_id = ?").get(revId, id) as
-      | Revision
-      | null;
-    if (!rev) return notFound();
-    snapshotPost(post, "restore"); // pre-revert state first — a revert is itself undoable
+    snapshotRevision(post); // pre-restore state first — a restore is itself undoable
     db().run("UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?", [
       rev.title ?? "",
       rev.content ?? "",
@@ -730,7 +707,7 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
         targetWordCount = 0;
       }
       if (title !== post.title || content !== post.content) {
-        snapshotPost(post, "edit");
+        snapshotRevision(post);
       }
       db().run(
         "UPDATE posts SET title = ?, content = ?, target_word_count = ?, updated_at = ? WHERE id = ?",
@@ -741,6 +718,7 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
 
     if (method === "DELETE") {
       db().run("DELETE FROM revisions WHERE post_id = ?", [id]);
+      db().run("DELETE FROM post_revisions WHERE post_id = ?", [id]);
       db().run("DELETE FROM posts WHERE id = ?", [id]);
       return json({ ok: true });
     }
