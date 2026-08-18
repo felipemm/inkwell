@@ -69,20 +69,6 @@ quality:
       operation: security
       argv: ["snyk", "test"]
       timeout_seconds: 300
-    # Shipped configured by default: the runner image provides both binaries
-    # (snyk since PR #13, impeccable via the design-quality change). Projects
-    # without a design surface or snyk setup remove the entry.
-    - name: design
-      area: frontend
-      operation: lint
-      argv: ["impeccable", "detect", "site/dist"]
-      timeout_seconds: 300
-      requires: site/dist        # missing target = fail fast (127), never a silent green
-    - name: snyk
-      area: backend
-      operation: security
-      argv: ["snyk", "test"]
-      timeout_seconds: 300
 
 agents:
   - name: planner
