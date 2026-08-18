@@ -586,9 +586,18 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     if (method !== "GET") return json({ error: "method not allowed" }, 405);
     if (!getPost(id)) return notFound();
     const rows = db()
-      .query("SELECT id, created_at, word_count, reason FROM revisions WHERE post_id = ? ORDER BY id DESC")
-      .all(id) as { id: number; created_at: string; word_count: number; reason: string }[];
-    return json(rows);
+      .query("SELECT id, title, content, created_at, word_count, reason FROM revisions WHERE post_id = ? ORDER BY id DESC")
+      .all(id) as { id: number; title: string | null; content: string | null; created_at: string; word_count: number; reason: string }[];
+    return json(
+      rows.map((r) => ({
+        id: r.id,
+        created_at: r.created_at,
+        title: r.title ?? "",
+        word_count: r.word_count,
+        reason: r.reason,
+        summary: (r.content ?? "").slice(0, 80),
+      })),
+    );
   }
 
   // /api/posts/:id/revisions/:rev
@@ -629,6 +638,51 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
       | null;
     if (!rev) return notFound();
     snapshotPost(post, "restore"); // pre-restore state first — a restore is itself undoable
+    db().run("UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?", [
+      rev.title ?? "",
+      rev.content ?? "",
+      now(),
+      id,
+    ]);
+    return json(getPost(id));
+  }
+
+  // /api/posts/:id/revisions/:a/compare/:b — diff between two snapshots
+  if (segments.length === 7 && segments[3] === "revisions" && segments[5] === "compare") {
+    const aId = Number(segments[4]);
+    const bId = Number(segments[6]);
+    if (!Number.isInteger(aId) || !Number.isInteger(bId)) return notFound();
+    if (method !== "GET") return json({ error: "method not allowed" }, 405);
+    const post = getPost(id);
+    if (!post) return notFound();
+    const a = db().query("SELECT * FROM revisions WHERE id = ?").get(aId) as Revision | null;
+    if (!a) return notFound();
+    const b = db().query("SELECT * FROM revisions WHERE id = ?").get(bId) as Revision | null;
+    if (!b) return notFound();
+    if (a.post_id !== id || b.post_id !== id) {
+      return json({ error: "revision does not belong to this post" }, 400);
+    }
+    const diff = lineDiff(a.content ?? "", b.content ?? "");
+    return json({
+      diff,
+      added: diff.filter((d) => d.op === "+").length,
+      removed: diff.filter((d) => d.op === "-").length,
+      word_delta: wordCount(b.content ?? "") - wordCount(a.content ?? ""),
+    });
+  }
+
+  // /api/posts/:id/revisions/:rev/revert — spec name for the restore contract
+  if (segments.length === 6 && segments[3] === "revisions" && segments[5] === "revert") {
+    const revId = Number(segments[4]);
+    if (!Number.isInteger(revId)) return notFound();
+    if (method !== "POST") return json({ error: "method not allowed" }, 405);
+    const post = getPost(id);
+    if (!post) return notFound();
+    const rev = db().query("SELECT * FROM revisions WHERE id = ? AND post_id = ?").get(revId, id) as
+      | Revision
+      | null;
+    if (!rev) return notFound();
+    snapshotPost(post, "restore"); // pre-revert state first — a revert is itself undoable
     db().run("UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?", [
       rev.title ?? "",
       rev.content ?? "",
