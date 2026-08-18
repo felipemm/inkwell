@@ -17,3 +17,8 @@ adws/adw_data/sessions/
 adws/adw_data/sssf.db
 adws/adw_data/sssf.db-wal
 adws/adw_data/sssf.db-shm
+adws.backup.*/
+adws/data/sessions/
+adws/data/sssf.db
+adws/data/sssf.db-wal
+adws/data/sssf.db-shm
