@@ -20,7 +20,7 @@
   --border-strong: #3d4652;
   --editor-surface: #141b26;
   --overlay: rgba(0, 0, 0, 0.65);
-  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 4px 12px rgba(0, 0, 0, 0.6);
   --editor-font-size: 18px;
   --editor-max-width: 1118px;
   --editor-font: var(--serif);
@@ -46,7 +46,7 @@
   --border-strong: #c4beb1;
   --editor-surface: #fcfbf7;
   --overlay: rgba(60, 55, 45, 0.35);
-  --shadow-modal: 0 12px 32px rgba(60, 55, 45, 0.25);
+  --shadow-modal: 0 4px 12px rgba(60, 55, 45, 0.25);
 }
 
 [data-theme="sepia"] {
@@ -67,7 +67,7 @@
   --border-strong: #c4b18a;
   --editor-surface: #faf5e8;
   --overlay: rgba(70, 55, 25, 0.35);
-  --shadow-modal: 0 12px 32px rgba(70, 55, 25, 0.25);
+  --shadow-modal: 0 4px 12px rgba(70, 55, 25, 0.25);
 }
 
 [data-theme="forest"] {
@@ -88,7 +88,7 @@
   --border-strong: #38543f;
   --editor-surface: #132117;
   --overlay: rgba(0, 0, 0, 0.6);
-  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 4px 12px rgba(0, 0, 0, 0.55);
 }
 
 [data-theme="midnight"] {
@@ -109,7 +109,7 @@
   --border-strong: #3a4768;
   --editor-surface: #0f162b;
   --overlay: rgba(0, 0, 0, 0.65);
-  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 
 [data-theme="ocean"] {
@@ -130,7 +130,7 @@
   --border-strong: #b5c9d8;
   --editor-surface: #f5fafd;
   --overlay: rgba(30, 50, 65, 0.35);
-  --shadow-modal: 0 12px 32px rgba(30, 50, 65, 0.25);
+  --shadow-modal: 0 4px 12px rgba(30, 50, 65, 0.25);
 }
 
 [data-theme="rose"] {
@@ -151,7 +151,7 @@
   --border-strong: #d3b6bc;
   --editor-surface: #fdf7f8;
   --overlay: rgba(70, 40, 45, 0.35);
-  --shadow-modal: 0 12px 32px rgba(70, 40, 45, 0.25);
+  --shadow-modal: 0 4px 12px rgba(70, 40, 45, 0.25);
 }
 
 [data-theme="graphite"] {
@@ -172,7 +172,7 @@
   --border-strong: #3d434f;
   --editor-surface: #1b1e25;
   --overlay: rgba(0, 0, 0, 0.6);
-  --shadow-modal: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 4px 12px rgba(0, 0, 0, 0.55);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -284,7 +284,7 @@ body.focus-mode .footer {
   align-items: center;
   gap: 8px;
   font-family: var(--serif);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--text);
@@ -375,7 +375,6 @@ body.focus-mode .footer {
 
 .dot.published {
   background: var(--accent);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .post-title {
@@ -888,7 +887,6 @@ kbd {
 
 .dot.scheduled {
   background: var(--schedule);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--schedule) 55%, transparent);
 }
 
 .btn.is-scheduled { color: var(--schedule); }
