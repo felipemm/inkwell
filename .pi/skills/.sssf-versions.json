@@ -1,0 +1,22 @@
+{
+  "brainstorming": {
+    "source": "https://github.com/obra/superpowers.git",
+    "path": "skills/brainstorming",
+    "commit": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797"
+  },
+  "grilling": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/productivity/grilling",
+    "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+  },
+  "grill-me": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/productivity/grill-me",
+    "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+  },
+  "grill-with-docs": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/grill-with-docs",
+    "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+  }
+}
