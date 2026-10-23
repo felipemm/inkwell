@@ -2,21 +2,66 @@
   "brainstorming": {
     "source": "https://github.com/obra/superpowers.git",
     "path": "skills/brainstorming",
-    "commit": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797"
+    "commit": "2ce8aa15d05bd57213e6f746f953aafb7ded7a8b"
   },
-  "grilling": {
+  "code-review": {
     "source": "https://github.com/mattpocock/skills.git",
-    "path": "skills/productivity/grilling",
-    "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+    "path": "skills/engineering/code-review",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "codebase-design": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/codebase-design",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "domain-modeling": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/domain-modeling",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
   },
   "grill-me": {
     "source": "https://github.com/mattpocock/skills.git",
     "path": "skills/productivity/grill-me",
-    "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
   },
   "grill-with-docs": {
     "source": "https://github.com/mattpocock/skills.git",
     "path": "skills/engineering/grill-with-docs",
-    "commit": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "grilling": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/productivity/grilling",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "implement": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/implement",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "tdd": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/tdd",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "to-spec": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/to-spec",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "to-tickets": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/to-tickets",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "triage": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/triage",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
+  },
+  "wayfinder": {
+    "source": "https://github.com/mattpocock/skills.git",
+    "path": "skills/engineering/wayfinder",
+    "commit": "5beb35b040e3de97e54fa9e386d7e42d15c295c2"
   }
 }

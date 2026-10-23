@@ -22,3 +22,8 @@ adws/data/sessions/
 adws/data/sssf.db
 adws/data/sssf.db-wal
 adws/data/sssf.db-shm
+.adws/data/sessions/
+.adws/data/sssf.db
+.adws/data/sssf.db-wal
+.adws/data/sssf.db-shm
+sssf-*/
