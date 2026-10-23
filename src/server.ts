@@ -349,6 +349,183 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
   return parsed as Record<string, unknown>;
 }
 
+// ─── portability ───────────────────────────────────────────────────────────
+// Markdown + versioned JSON bundle formats. Append-only: imports always
+// allocate fresh ids and never write revisions or touch existing rows.
+
+/** Validation failure for a portable document/bundle → 400, never a 500. */
+class PortableError extends Error {}
+
+/** Normalized shape written by the import insert helper. */
+type PortablePost = {
+  title: string;
+  content: string;
+  status: string;
+  target_word_count: number;
+  publish_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Media type without parameters, lowercased ("Text/Markdown; charset=utf-8" → "text/markdown"). */
+const normalizeContentType = (header: string | null): string =>
+  (header ?? "").split(";", 1)[0].trim().toLowerCase();
+
+/** POST-compatible target count: finite non-negative number floored, else 0. */
+function normalizeTargetWordCount(value: unknown): number {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+/** Exact LF-only Markdown document. No body escaping or newline normalization:
+ *  concatenating the front matter and the stored body preserves a trailing
+ *  content newline byte-for-byte. */
+function serializeMarkdown(post: Post): string {
+  return (
+    "---\n" +
+    `title: ${post.title ?? ""}\n` +
+    `status: ${post.status ?? ""}\n` +
+    `created_at: ${post.created_at ?? ""}\n` +
+    `updated_at: ${post.updated_at ?? ""}\n` +
+    `target_word_count: ${post.target_word_count ?? 0}\n` +
+    "---\n" +
+    "\n" +
+    (post.content ?? "")
+  );
+}
+
+/** Strict flat front-matter parser. Recognizes front matter only when the
+ *  opening `---` delimiter line is at byte zero; every later `---` (including
+ *  inside fenced code) is ordinary body text. Splits each header at its first
+ *  colon only, so values/body bytes containing colons survive. */
+function parseMarkdown(text: string): PortablePost {
+  if (!text.startsWith("---\n")) throw new PortableError("markdown is missing its front matter");
+
+  const headers = new Map<string, string>();
+  let pos = 4; // just past the opening "---\n"
+  let closeNl = -1;
+  for (;;) {
+    const nl = text.indexOf("\n", pos);
+    if (nl === -1) throw new PortableError("markdown front matter is unterminated");
+    const line = text.slice(pos, nl);
+    if (line === "---") {
+      closeNl = nl;
+      break;
+    }
+    const colon = line.indexOf(":");
+    if (colon === -1) throw new PortableError("markdown has an invalid front matter header line");
+    const key = line.slice(0, colon).trim();
+    if (key === "") throw new PortableError("markdown has an invalid front matter header line");
+    let value = line.slice(colon + 1);
+    if (value.startsWith(" ")) value = value.slice(1); // the one serializer-added space
+    if (!headers.has(key)) headers.set(key, value);
+    pos = nl + 1;
+  }
+
+  // Mandatory single blank separator line after the closing delimiter.
+  if (text[closeNl + 1] !== "\n") {
+    throw new PortableError("markdown is missing the blank separator after its front matter");
+  }
+  const content = text.slice(closeNl + 2);
+
+  const ts = now();
+  return {
+    title: headers.get("title") ?? "Untitled",
+    content,
+    status: headers.get("status") ?? "draft",
+    target_word_count: normalizeTargetWordCount(headers.get("target_word_count") ?? 0),
+    publish_at: null, // Markdown carries no publish_at
+    created_at: headers.get("created_at") ?? ts,
+    updated_at: headers.get("updated_at") ?? ts,
+  };
+}
+
+/** Validates/normalizes one JSON bundle row. Source ids are never trusted. */
+function normalizeBundleRow(row: unknown): PortablePost {
+  if (row === null || typeof row !== "object" || Array.isArray(row)) {
+    throw new PortableError("bundle contains an invalid post row");
+  }
+  const r = row as Record<string, unknown>;
+  const ts = now();
+  return {
+    title: typeof r.title === "string" ? r.title : "Untitled",
+    content: typeof r.content === "string" ? r.content : "",
+    status: typeof r.status === "string" ? r.status : "draft",
+    target_word_count: normalizeTargetWordCount(r.target_word_count),
+    publish_at: typeof r.publish_at === "string" ? r.publish_at : null,
+    created_at: typeof r.created_at === "string" ? r.created_at : ts,
+    updated_at: typeof r.updated_at === "string" ? r.updated_at : ts,
+  };
+}
+
+/** Single append-only insert: omits the source id, records generated timestamps
+ *  where absent, snapshots no revision, and returns the new row id. */
+function insertPortable(post: PortablePost): number {
+  const { lastInsertRowid } = db().run(
+    "INSERT INTO posts (title, content, status, target_word_count, publish_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [post.title, post.content, post.status, post.target_word_count, post.publish_at, post.created_at, post.updated_at],
+  );
+  return Number(lastInsertRowid);
+}
+
+/** Deterministic lowercase attachment slug. Diacritics are folded and every
+ *  other character (path separators, quotes, control bytes) collapses into a
+ *  single dash, so no title can inject a header or escape the filename. */
+function slugify(title: string | null | undefined): string {
+  const slug = (title ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "untitled";
+}
+
+/** POST /api/import — dispatch by normalized media type. */
+async function handleImport(req: Request): Promise<Response> {
+  const contentType = normalizeContentType(req.headers.get("content-type"));
+  const text = await req.text();
+
+  if (contentType === "text/markdown") {
+    try {
+      const id = insertPortable(parseMarkdown(text));
+      return json({ imported: 1, ids: [id] }, 201);
+    } catch (err) {
+      if (err instanceof PortableError) return json({ error: err.message }, 400);
+      throw err;
+    }
+  }
+
+  if (contentType === "application/json") {
+    const bundle = JSON.parse(text); // malformed JSON → existing 400 handling upstream
+    if (bundle === null || typeof bundle !== "object" || Array.isArray(bundle)) {
+      return json({ error: "bundle must be a JSON object" }, 400);
+    }
+    const record = bundle as Record<string, unknown>;
+    if (record.version !== 1) return json({ error: "unsupported bundle version" }, 400);
+    if (!Array.isArray(record.posts)) return json({ error: "bundle posts must be an array" }, 400);
+
+    let rows: PortablePost[];
+    try {
+      rows = record.posts.map(normalizeBundleRow);
+    } catch (err) {
+      if (err instanceof PortableError) return json({ error: err.message }, 400);
+      throw err;
+    }
+
+    // All-or-nothing: validate every row first, then insert them in order. Any
+    // insert failure rolls the whole bundle back, leaving no partial rows.
+    const ids: number[] = [];
+    const insertAll = db().transaction((items: PortablePost[]) => {
+      for (const item of items) ids.push(insertPortable(item));
+    });
+    insertAll(rows);
+    return json({ imported: ids.length, ids }, 201);
+  }
+
+  return json({ error: "unsupported media type" }, 400);
+}
+
 // ─── static ────────────────────────────────────────────────────────────────
 const CONTENT_TYPES: Record<string, string> = {
   html: "text/html; charset=utf-8",
@@ -468,6 +645,21 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
     return json({ error: "method not allowed" }, 405);
   }
 
+  // /api/export — full row bundle in deterministic id ASC order
+  if (segments[1] === "export") {
+    if (segments.length !== 2) return notFound();
+    if (method !== "GET") return json({ error: "method not allowed" }, 405);
+    const posts = db().query("SELECT * FROM posts ORDER BY id ASC").all() as Post[];
+    return json({ version: 1, exported_at: now(), posts });
+  }
+
+  // /api/import — append-only Markdown or version-1 JSON bundle
+  if (segments[1] === "import") {
+    if (segments.length !== 2) return notFound();
+    if (method !== "POST") return json({ error: "method not allowed" }, 405);
+    return handleImport(req);
+  }
+
   if (segments[1] !== "posts") return notFound();
 
   // /api/posts
@@ -505,6 +697,20 @@ async function handleApi(req: Request, pathname: string): Promise<Response> {
 
   const id = Number(segments[2]);
   if (!Number.isInteger(id)) return notFound();
+
+  // /api/posts/:id/export — download one post as Markdown
+  if (segments.length === 4 && segments[3] === "export") {
+    if (method !== "GET") return json({ error: "method not allowed" }, 405);
+    const post = getPost(id);
+    if (!post) return notFound();
+    return new Response(serializeMarkdown(post), {
+      status: 200,
+      headers: {
+        "content-type": "text/markdown",
+        "content-disposition": `attachment; filename="${slugify(post.title)}.md"`,
+      },
+    });
+  }
 
   // /api/posts/:id/publish — toggles draft ↔ published. Publishing a scheduled
   // post publishes it now and cancels its schedule; unpublishing clears publish_at.

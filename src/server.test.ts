@@ -1874,3 +1874,387 @@ test("style.css styles the scheduled dot and the schedule control", async () => 
   expect(css).toContain(".schedule-input");
   expect(css).toContain("--schedule:");
 });
+
+// ─── Post portability (spec: adws/specs/26ee7c3c_spec-post-portability.md) ──
+
+/** POST raw text to /api/import with an explicit media type. */
+const rawImport = (contentType: string, body: string) =>
+  api("/import", { method: "POST", headers: { "content-type": contentType }, body });
+
+const FULL_ROW_KEYS = [
+  "id",
+  "title",
+  "content",
+  "status",
+  "target_word_count",
+  "publish_at",
+  "created_at",
+  "updated_at",
+];
+
+test("GET /api/posts/:id/export returns exact ordered Markdown with a safe .md attachment", async () => {
+  const created = await (
+    await post("/posts", { title: "Hello World", content: "Body line.", target_word_count: 42 })
+  ).json();
+
+  const res = await api(`/posts/${created.id}/export`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("text/markdown");
+  const disposition = res.headers.get("content-disposition") ?? "";
+  expect(disposition).toContain("attachment");
+  expect(disposition).toMatch(/filename="hello-world\.md"/);
+
+  const body = await res.text();
+  expect(body).toBe(
+    "---\n" +
+      "title: Hello World\n" +
+      "status: draft\n" +
+      `created_at: ${created.created_at}\n` +
+      `updated_at: ${created.updated_at}\n` +
+      "target_word_count: 42\n" +
+      "---\n" +
+      "\n" +
+      "Body line.",
+  );
+
+  // header order is fixed: title, status, created_at, updated_at, target_word_count
+  const frontMatter = body.slice(0, body.indexOf("\n---\n"));
+  expect(frontMatter.split("\n")).toEqual([
+    "---",
+    "title: Hello World",
+    "status: draft",
+    `created_at: ${created.created_at}`,
+    `updated_at: ${created.updated_at}`,
+    "target_word_count: 42",
+  ]);
+  // one blank separator line between front matter and body
+  expect(body).toContain("---\n\nBody line.");
+});
+
+test("GET /api/posts/:id/export 404s for unknown/noninteger ids and 405s for non-GET", async () => {
+  const missing = await api("/posts/999999/export");
+  expect(missing.status).toBe(404);
+  expect(await missing.json()).toEqual({ error: "not found" });
+
+  const nonInteger = await api("/posts/not-a-number/export");
+  expect(nonInteger.status).toBe(404);
+  expect(await nonInteger.json()).toEqual({ error: "not found" });
+
+  const created = await (await post("/posts", { title: "Method", content: "x" })).json();
+  const badMethod = await post(`/posts/${created.id}/export`);
+  expect(badMethod.status).toBe(405);
+  expect(await badMethod.json()).toEqual({ error: "method not allowed" });
+});
+
+test("export filename slug is lowercase, header-safe, and falls back to untitled", async () => {
+  const cases: [string, string][] = [
+    ["A Title With Spaces", "a-title-with-spaces"],
+    ["../../etc/passwd", "etc-passwd"],
+    ["Café Déjà Vu", "cafe-deja-vu"],
+    ["evil\"\r\nX-Injected: 1", "evil-x-injected-1"],
+  ];
+  for (const [title, slug] of cases) {
+    const created = await (await post("/posts", { title, content: "x" })).json();
+    const disposition = (await api(`/posts/${created.id}/export`)).headers.get("content-disposition") ?? "";
+    expect(disposition).toBe(`attachment; filename="${slug}.md"`);
+    expect(disposition).not.toMatch(/[\r\n]/);
+  }
+
+  const empty = await (await post("/posts", { title: "", content: "x" })).json();
+  const emptyDisposition = (await api(`/posts/${empty.id}/export`)).headers.get("content-disposition") ?? "";
+  expect(emptyDisposition).toBe('attachment; filename="untitled.md"');
+});
+
+test("Markdown export/import round-trips colons, Unicode, body ---, fenced code, and a trailing newline", async () => {
+  const title = "Título: A: B — ünïcode";
+  const content = "leading: colon\n\n---\n\n```\nnot front matter: x\n---\n```\n\ncafé ☕: done\n";
+  const created = await (await post("/posts", { title, content, target_word_count: 7 })).json();
+
+  const exported = await (await api(`/posts/${created.id}/export`)).text();
+  expect(exported.endsWith("\n")).toBe(true);
+  expect(exported).toContain(`title: ${title}\n`);
+  expect(exported.endsWith(content)).toBe(true); // body bytes preserved verbatim
+
+  const first = await rawImport("text/markdown; charset=utf-8", exported);
+  expect(first.status).toBe(201);
+  const firstOut = await first.json();
+  expect(firstOut.imported).toBe(1);
+  expect(firstOut.ids).toHaveLength(1);
+  const firstId = firstOut.ids[0];
+  expect(firstId).not.toBe(created.id);
+
+  const firstRow = await (await api(`/posts/${firstId}`)).json();
+  expect(firstRow.title).toBe(title);
+  expect(firstRow.content).toBe(content);
+  expect(firstRow.content.endsWith("\n")).toBe(true);
+  expect(firstRow.status).toBe(created.status);
+  expect(firstRow.target_word_count).toBe(7);
+
+  // importing the identical bytes again appends a second, independent row
+  const second = await (await rawImport("text/markdown", exported)).json();
+  expect(second.imported).toBe(1);
+  const secondId = second.ids[0];
+  expect(secondId).not.toBe(created.id);
+  expect(secondId).not.toBe(firstId);
+  const secondRow = await (await api(`/posts/${secondId}`)).json();
+  expect(secondRow.title).toBe(title);
+  expect(secondRow.content).toBe(content);
+});
+
+test("Markdown import applies POST defaults and preserves supplied timestamps", async () => {
+  const doc =
+    "---\ncreated_at: 2020-01-01T00:00:00.000Z\nupdated_at: 2020-02-02T00:00:00.000Z\n---\n\nhello";
+  const res = await rawImport("text/markdown", doc);
+  expect(res.status).toBe(201);
+  const { ids } = await res.json();
+  const row = await (await api(`/posts/${ids[0]}`)).json();
+  expect(row.title).toBe("Untitled");
+  expect(row.status).toBe("draft");
+  expect(row.target_word_count).toBe(0);
+  expect(row.content).toBe("hello");
+  expect(row.publish_at).toBeNull(); // Markdown carries no publish_at
+  expect(row.created_at).toBe("2020-01-01T00:00:00.000Z");
+  expect(row.updated_at).toBe("2020-02-02T00:00:00.000Z");
+});
+
+test("Markdown target_word_count normalizes like POST: floored, finite, non-negative, else 0", async () => {
+  const docs: [string, number][] = [
+    ["---\ntitle: t\ntarget_word_count: 3.9\n---\n\nb", 3],
+    ["---\ntitle: t\ntarget_word_count: -4\n---\n\nb", 0],
+    ["---\ntitle: t\ntarget_word_count: abc\n---\n\nb", 0],
+    ["---\ntitle: t\n---\n\nb", 0],
+  ];
+  for (const [doc, expected] of docs) {
+    const res = await rawImport("text/markdown", doc);
+    expect(res.status).toBe(201);
+    const { ids } = await res.json();
+    const row = await (await api(`/posts/${ids[0]}`)).json();
+    expect(row.target_word_count).toBe(expected);
+  }
+});
+
+test("Markdown import rejects malformed documents with 400 and inserts nothing", async () => {
+  const before = (await (await api("/posts")).json()).length;
+  const bad = [
+    "no front matter here\n", // missing opener
+    "\n---\ntitle: x\n---\n\nbody", // opener not at byte zero
+    "---\ntitle: x\n", // unterminated front matter
+    "---\nnot a flat header\n---\n\nbody", // invalid header line
+    "---\ntitle: x\n---\nbody", // missing blank separator
+  ];
+  for (const doc of bad) {
+    const res = await rawImport("text/markdown", doc);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBeTruthy();
+  }
+  const after = (await (await api("/posts")).json()).length;
+  expect(after).toBe(before);
+});
+
+test("Markdown parser only reads the opening block: later --- is body and unknown keys are ignored", async () => {
+  const doc = "---\ntitle: T\nunknown_key: value\n---\n\nbefore\n---\nafter\n";
+  const res = await rawImport("text/markdown", doc);
+  expect(res.status).toBe(201);
+  const { ids } = await res.json();
+  const row = await (await api(`/posts/${ids[0]}`)).json();
+  expect(row.title).toBe("T");
+  expect(row.content).toBe("before\n---\nafter\n");
+});
+
+test("GET /api/export returns a version-1 bundle of full rows in id ASC order; 405 for non-GET", async () => {
+  const first = await (await post("/posts", { title: "Bundle One", content: "one two" })).json();
+  const second = await (await post("/posts", { title: "Bundle Two", content: "three" })).json();
+
+  const res = await api("/export");
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toContain("application/json");
+  const bundle = await res.json();
+  expect(bundle.version).toBe(1);
+  expect(typeof bundle.exported_at).toBe("string");
+  expect(Number.isNaN(Date.parse(bundle.exported_at))).toBe(false);
+  expect(Array.isArray(bundle.posts)).toBe(true);
+
+  const ids = bundle.posts.map((p: { id: number }) => p.id);
+  expect(ids).toEqual([...ids].sort((a: number, b: number) => a - b));
+  expect(ids).toContain(first.id);
+  expect(ids).toContain(second.id);
+
+  const row = bundle.posts.find((p: { id: number }) => p.id === first.id);
+  for (const key of FULL_ROW_KEYS) expect(row).toHaveProperty(key);
+  expect(row.title).toBe("Bundle One");
+  expect(row.content).toBe("one two");
+
+  const badMethod = await post("/export");
+  expect(badMethod.status).toBe(405);
+  expect(await badMethod.json()).toEqual({ error: "method not allowed" });
+});
+
+test("POST /api/import appends a JSON bundle with fresh ids in source order and retains fields", async () => {
+  const source = await (
+    await post("/posts", { title: "Portable Source", content: "imported body", target_word_count: 11 })
+  ).json();
+  const sourceBefore = await (await api(`/posts/${source.id}`)).json();
+
+  const bundle = {
+    version: 1,
+    exported_at: "2026-01-01T00:00:00.000Z",
+    posts: [
+      {
+        id: 987654,
+        title: "Imported One",
+        content: "body one",
+        status: "scheduled",
+        target_word_count: 11,
+        publish_at: "2999-05-05T05:05:05.000Z",
+        created_at: "2001-01-01T00:00:00.000Z",
+        updated_at: "2002-02-02T00:00:00.000Z",
+      },
+      {
+        id: 123,
+        title: "Imported Two",
+        content: "body two",
+        status: "published",
+        target_word_count: 0,
+        publish_at: null,
+        created_at: "2003-03-03T00:00:00.000Z",
+        updated_at: "2004-04-04T00:00:00.000Z",
+      },
+    ],
+  };
+
+  const res = await rawImport("application/json; charset=utf-8", JSON.stringify(bundle));
+  expect(res.status).toBe(201);
+  const out = await res.json();
+  expect(out.imported).toBe(2);
+  expect(out.ids).toHaveLength(2);
+  expect(out.ids[0]).not.toBe(987654); // source id never reused
+  expect(out.ids[1]).not.toBe(123);
+  expect(out.ids[1]).toBeGreaterThan(out.ids[0]); // bundle order preserved
+
+  const one = await (await api(`/posts/${out.ids[0]}`)).json();
+  expect(one.id).toBe(out.ids[0]);
+  expect(one.title).toBe("Imported One");
+  expect(one.content).toBe("body one");
+  expect(one.status).toBe("scheduled");
+  expect(one.target_word_count).toBe(11);
+  expect(one.publish_at).toBe("2999-05-05T05:05:05.000Z");
+  expect(one.created_at).toBe("2001-01-01T00:00:00.000Z");
+  expect(one.updated_at).toBe("2002-02-02T00:00:00.000Z");
+
+  const two = await (await api(`/posts/${out.ids[1]}`)).json();
+  expect(two.status).toBe("published");
+  expect(two.created_at).toBe("2003-03-03T00:00:00.000Z");
+  expect(two.updated_at).toBe("2004-04-04T00:00:00.000Z");
+  expect(two.publish_at).toBeNull();
+
+  // append-only: the original row is untouched and no source id was written
+  const sourceAfter = await (await api(`/posts/${source.id}`)).json();
+  expect(sourceAfter).toEqual(sourceBefore);
+  expect((await api("/posts/987654")).status).toBe(404);
+
+  // importing the identical bundle again appends a second set of fresh ids
+  const again = await (await rawImport("application/json", JSON.stringify(bundle))).json();
+  expect(again.imported).toBe(2);
+  expect(again.ids).toHaveLength(2);
+  expect(again.ids[0]).not.toBe(out.ids[0]);
+  expect(again.ids[1]).not.toBe(out.ids[1]);
+});
+
+test("an exported bundle imports verbatim as fresh rows retaining status/timestamps/publish_at", async () => {
+  const source = await (
+    await post("/posts", { title: "Bundle Round Trip", content: "round trip body", target_word_count: 9 })
+  ).json();
+  await post(`/posts/${source.id}/schedule`, { publish_at: "2999-07-07T07:07:07.000Z" });
+  const sourceRow = await (await api(`/posts/${source.id}`)).json();
+
+  const bundle = await (await api("/export")).json();
+  expect(bundle.posts.length).toBeGreaterThan(0);
+  const maxIdBefore = Math.max(...bundle.posts.map((p: { id: number }) => p.id));
+
+  const res = await rawImport("application/json", JSON.stringify(bundle));
+  expect(res.status).toBe(201);
+  const out = await res.json();
+  expect(out.imported).toBe(bundle.posts.length);
+  expect(out.ids).toHaveLength(bundle.posts.length);
+  expect(out.ids).toEqual([...out.ids].sort((a: number, b: number) => a - b)); // source order
+  expect(out.ids.every((id: number) => id > maxIdBefore)).toBe(true); // all fresh
+
+  const index = bundle.posts.findIndex((p: { id: number }) => p.id === source.id);
+  const copy = await (await api(`/posts/${out.ids[index]}`)).json();
+  expect(copy.id).toBe(out.ids[index]);
+  expect(copy.title).toBe(sourceRow.title);
+  expect(copy.content).toBe(sourceRow.content);
+  expect(copy.status).toBe("scheduled");
+  expect(copy.publish_at).toBe("2999-07-07T07:07:07.000Z");
+  expect(copy.created_at).toBe(sourceRow.created_at);
+  expect(copy.updated_at).toBe(sourceRow.updated_at);
+  expect(copy.target_word_count).toBe(9);
+
+  const sourceAfter = await (await api(`/posts/${source.id}`)).json();
+  expect(sourceAfter).toEqual(sourceRow);
+});
+
+test("JSON bundle import applies defaults to missing/invalid fields and snapshots no revisions", async () => {
+  const res = await rawImport(
+    "application/json",
+    JSON.stringify({ version: 1, exported_at: "x", posts: [{ id: 5 }] }),
+  );
+  expect(res.status).toBe(201);
+  const out = await res.json();
+  const row = await (await api(`/posts/${out.ids[0]}`)).json();
+  expect(row.title).toBe("Untitled");
+  expect(row.content).toBe("");
+  expect(row.status).toBe("draft");
+  expect(row.target_word_count).toBe(0);
+  expect(row.publish_at).toBeNull();
+  expect(typeof row.created_at).toBe("string");
+  expect(row.created_at).toBeTruthy();
+  expect(typeof row.updated_at).toBe("string");
+  expect(postRevisionsOf(out.ids[0]).length).toBe(0); // imports never snapshot revisions
+});
+
+test("JSON bundle import is all-or-nothing: malformed JSON, wrong version, non-array, invalid member", async () => {
+  // malformed JSON keeps the existing 400 behavior
+  let res = await rawImport("application/json", "{not json");
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBeTruthy();
+
+  res = await rawImport("application/json", JSON.stringify({ version: 2, posts: [] }));
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBeTruthy();
+
+  res = await rawImport("application/json", JSON.stringify({ version: 1, posts: {} }));
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBeTruthy();
+
+  // non-object top level
+  res = await rawImport("application/json", JSON.stringify([1, 2, 3]));
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBeTruthy();
+
+  // invalid member → the whole bundle is rejected, no partial insert
+  const before = (await (await api("/posts")).json()).length;
+  res = await rawImport(
+    "application/json",
+    JSON.stringify({
+      version: 1,
+      exported_at: "x",
+      posts: [{ title: "would be first", content: "a" }, "not an object"],
+    }),
+  );
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBeTruthy();
+  const after = await (await api("/posts")).json();
+  expect(after.length).toBe(before);
+  expect(after.map((p: { title: string }) => p.title)).not.toContain("would be first");
+});
+
+test("POST /api/import rejects unsupported media types; GET /api/import is 405", async () => {
+  const res = await rawImport("text/plain", "hello");
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBeTruthy();
+
+  const getRes = await api("/import");
+  expect(getRes.status).toBe(405);
+  expect(await getRes.json()).toEqual({ error: "method not allowed" });
+});
