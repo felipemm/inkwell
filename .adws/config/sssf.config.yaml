@@ -74,16 +74,8 @@ quality:
       operation: lint
       surface: src/public
       timeout_seconds: 300
-    - name: snyk
-      area: backend
-      operation: security
-      # Auth is OAuth-ONLY: run `snyk auth` on the operator machine. Sandboxed
-      # runs mount the host ~/.config (the CLI's OAuth session) read-only at
-      # /tmp/.config, so the container's snyk uses the same session — no token
-      # is ever forwarded (SNYK_TOKEN would outrank OAuth; stale/UAT tokens 401
-      # against prod -> SNYK-0005).
-      argv: ["snyk", "test"]
-      timeout_seconds: 300
+    # Snyk is disabled for this demo until the runner has a valid OAuth session;
+    # current runs fail with SNYK-0005/SNYK-0003 rather than reporting code issues.
 
 agents:
   - name: planner
