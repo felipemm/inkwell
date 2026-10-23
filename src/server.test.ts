@@ -2258,3 +2258,110 @@ test("POST /api/import rejects unsupported media types; GET /api/import is 405",
   expect(getRes.status).toBe(405);
   expect(await getRes.json()).toEqual({ error: "method not allowed" });
 });
+
+test("index.html exposes portability controls: current export, bundle export, and import input", async () => {
+  const res = await fetch(`${base}/index.html`);
+  expect(res.status).toBe(200);
+  const html = await res.text();
+
+  // editor footer (last </footer>) exposes the current-post Markdown export
+  const editorFooter = html.slice(html.indexOf('<footer class="footer">'), html.lastIndexOf("</footer>"));
+  expect(editorFooter).toContain('id="export-btn"');
+
+  // sidebar footer exposes bundle export plus an import trigger & file input
+  const sidebarFooter = html.slice(
+    html.indexOf('<footer class="sidebar-footer">'),
+    html.indexOf("</footer>", html.indexOf('<footer class="sidebar-footer">')),
+  );
+  expect(sidebarFooter).toContain('id="export-all-btn"');
+  expect(sidebarFooter).toContain('id="import-btn"');
+  expect(sidebarFooter).toContain('id="import-input"');
+
+  // the file input is a real, usable file picker accepting both portable formats
+  const inputTag = html.slice(
+    html.indexOf('id="import-input"'),
+    html.indexOf(">", html.indexOf('id="import-input"')),
+  );
+  expect(inputTag).toContain('type="file"');
+  expect(inputTag).toContain("accept=");
+  expect(inputTag).toContain(".md");
+  expect(inputTag).toContain(".json");
+  expect(inputTag).toContain("text/markdown");
+  expect(inputTag).toContain("application/json");
+  const inputStart = html.lastIndexOf("<input", html.indexOf('id="import-input"'));
+  expect(html.slice(inputStart, inputStart + 6)).toBe("<input");
+  expect(inputTag).not.toContain("disabled");
+});
+
+test("app.js downloads via Blob + object URL and imports raw text with correct MIME", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+
+  // download mechanism: Blob + object URL (never filesystem APIs)
+  expect(js).toContain("new Blob");
+  expect(js).toContain("URL.createObjectURL");
+  expect(js).toContain("URL.revokeObjectURL");
+  expect(js).toContain("a.download");
+  expect(js).not.toContain("showSaveFilePicker");
+  expect(js).not.toContain("node:fs");
+
+  // export endpoints for one post and the whole bundle
+  expect(js).toContain("/api/posts/${current.id}/export");
+  expect(js).toContain("/api/export");
+  expect(js).toContain("content-disposition");
+  expect(js).toContain(".json");
+
+  // raw import: read the file, choose MIME by extension, post raw text
+  expect(js).toContain("file.text()");
+  expect(js).toContain("/api/import");
+  expect(js).toContain("Content-Type");
+  expect(js).toContain("text/markdown");
+  expect(js).toContain("application/json");
+
+  // identical-file reimport: the input value is cleared after every attempt
+  expect(js).toContain("importInput.value = ''");
+
+  // refresh wiring after a successful import
+  expect(js).toContain("api('GET', '/api/posts')");
+  expect(js).toContain("renderList()");
+  expect(js).toContain("selectPost(firstId)");
+});
+
+test("portability helpers pick upload MIME and attachment filenames (pure section)", async () => {
+  const res = await fetch(`${base}/app.js`);
+  expect(res.status).toBe(200);
+  const js = await res.text();
+
+  const { importContentType, filenameFromDisposition, markdownFilename } = loadSection<any>(
+    js,
+    "portability: Blob downloads + raw import",
+    ["importContentType", "filenameFromDisposition", "markdownFilename"],
+  );
+
+  // accepted extensions map to their portable MIME; unknown falls back safely
+  expect(importContentType({ name: "notes.md" })).toBe("text/markdown");
+  expect(importContentType({ name: "NOTES.MD" })).toBe("text/markdown");
+  expect(importContentType({ name: "a.markdown" })).toBe("text/markdown");
+  expect(importContentType({ name: "bundle.json" })).toBe("application/json");
+  expect(importContentType({ name: "mystery", type: "application/json; charset=utf-8" })).toBe("application/json");
+  expect(importContentType({ name: "mystery", type: "text/markdown" })).toBe("text/markdown");
+  expect(importContentType({ name: "mystery", type: "text/plain" })).toBe("text/markdown");
+  expect(importContentType(null)).toBe("text/markdown");
+
+  // prefer the server's attachment filename, fall back to a slugified .md
+  expect(filenameFromDisposition('attachment; filename="hello-world.md"', "x.md")).toBe("hello-world.md");
+  expect(filenameFromDisposition("", "x.md")).toBe("x.md");
+  expect(filenameFromDisposition(null, "x.md")).toBe("x.md");
+  expect(markdownFilename("A Title With Spaces")).toBe("a-title-with-spaces.md");
+  expect(markdownFilename("")).toBe("untitled.md");
+});
+
+test("style.css styles the portability controls and hides the file input accessibly", async () => {
+  const res = await fetch(`${base}/style.css`);
+  expect(res.status).toBe(200);
+  const css = await res.text();
+  expect(css).toContain(".visually-hidden");
+  expect(css).toContain(".sidebar-footer .btn");
+  expect(css).toContain("clip-path");
+});

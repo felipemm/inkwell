@@ -37,6 +37,10 @@
   <nav id="post-list" class="post-list" aria-label="Posts"></nav>
   <footer class="sidebar-footer">
     <span id="total-posts" class="meta">0 posts</span>
+    <span class="spacer"></span>
+    <button id="export-all-btn" class="btn" type="button" title="Export all posts as a JSON bundle">export all</button>
+    <button id="import-btn" class="btn" type="button" title="Import Markdown or JSON">import</button>
+    <input id="import-input" class="visually-hidden" type="file" accept=".md,.json,text/markdown,application/json" aria-label="Import posts" tabindex="-1">
   </footer>
 </aside>
 
@@ -63,6 +67,7 @@
     <input id="schedule-at" class="schedule-input" type="datetime-local" aria-label="Schedule publish time">
     <button id="schedule-btn" class="btn" type="button">schedule</button>
     <button id="history-btn" class="btn" type="button" title="Revision history">history</button>
+    <button id="export-btn" class="btn" type="button" title="Export this post as Markdown">export</button>
   </footer>
 </main>
 

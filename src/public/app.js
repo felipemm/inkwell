@@ -39,6 +39,10 @@ const ui = {
   historyClose: el('history-close'),
   scheduleAt: el('schedule-at'),
   scheduleBtn: el('schedule-btn'),
+  exportBtn: el('export-btn'),
+  exportAllBtn: el('export-all-btn'),
+  importBtn: el('import-btn'),
+  importInput: el('import-input'),
 };
 
 let posts = [];        // sidebar summaries, newest first
@@ -618,6 +622,98 @@ ui.searchClear?.addEventListener('click', () => {
   }
 });
 
+// --- portability: Blob downloads + raw import -----------------------------
+
+/** Trigger a browser download from an in-memory Blob using an object URL. */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Prefer the server-provided attachment filename; fall back locally. */
+function filenameFromDisposition(disposition, fallback) {
+  if (!disposition) return fallback;
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  return match && match[1] ? match[1] : fallback;
+}
+
+function markdownFilename(title) {
+  const slug = (title || 'untitled')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slug || 'untitled'}.md`;
+}
+
+/** Pick the raw upload MIME from the file extension, then its declared type. */
+function importContentType(file) {
+  const name = (file && file.name ? file.name : '').toLowerCase();
+  if (name.endsWith('.json')) return 'application/json';
+  if (name.endsWith('.md') || name.endsWith('.markdown')) return 'text/markdown';
+  const declared = (file && file.type ? file.type : '').split(';', 1)[0].trim().toLowerCase();
+  if (declared === 'application/json' || declared === 'text/markdown') return declared;
+  return 'text/markdown';
+}
+
+async function exportCurrent() {
+  if (!current) return;
+  await flushSave();
+  const res = await fetch(`/api/posts/${current.id}/export`);
+  if (!res.ok) throw new Error(`export failed: ${res.status}`);
+  const text = await res.text();
+  const type = res.headers.get('content-type') || 'text/markdown';
+  const fallback = markdownFilename(ui.title.value || current.title);
+  const filename = filenameFromDisposition(res.headers.get('content-disposition'), fallback);
+  downloadBlob(new Blob([text], { type }), filename);
+}
+
+async function exportAll() {
+  const res = await fetch('/api/export');
+  if (!res.ok) throw new Error(`export failed: ${res.status}`);
+  const text = await res.text();
+  downloadBlob(new Blob([text], { type: 'application/json' }), 'inkwell-export.json');
+}
+
+async function importFile(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': importContentType(file) },
+      body: text,
+    });
+    if (!res.ok) throw new Error(`import failed: ${res.status}`);
+    const result = await res.json();
+
+    // Refresh an unfiltered list and drop any active search state.
+    if (ui.searchInput) ui.searchInput.value = '';
+    if (ui.searchClear) ui.searchClear.hidden = true;
+    currentSearchQuery = '';
+    posts = await api('GET', '/api/posts');
+    renderList();
+
+    const firstId = Array.isArray(result.ids) ? result.ids[0] : undefined;
+    if (firstId !== undefined && firstId !== null) {
+      await selectPost(firstId);
+    }
+  } catch (err) {
+    console.warn(err);
+    setSaveState('import failed');
+  } finally {
+    // Reset so selecting the identical file again re-triggers a change event.
+    if (ui.importInput) ui.importInput.value = '';
+  }
+}
+
 // --- events ---------------------------------------------------------------
 
 ui.newBtn.addEventListener('click', async () => {
@@ -719,6 +815,23 @@ for (const btn of ui.widthButtons) {
 ui.targetWords?.addEventListener('input', () => {
   updateGoal();
   scheduleSave();
+});
+
+ui.exportBtn?.addEventListener('click', () => {
+  exportCurrent().catch((err) => {
+    console.warn(err);
+    setSaveState('export failed');
+  });
+});
+ui.exportAllBtn?.addEventListener('click', () => {
+  exportAll().catch((err) => {
+    console.warn(err);
+    setSaveState('export failed');
+  });
+});
+ui.importBtn?.addEventListener('click', () => ui.importInput?.click());
+ui.importInput?.addEventListener('change', (e) => {
+  importFile(e.target.files && e.target.files[0]);
 });
 
 document.addEventListener('click', (e) => {

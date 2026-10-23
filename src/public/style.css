@@ -338,12 +338,18 @@ body.focus-mode .footer {
 .sidebar-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   height: 44px;
-  padding: 0 18px;
+  padding: 0 14px;
   border-top: 1px solid var(--border);
   background: var(--bg-sidebar);
   flex-shrink: 0;
+}
+
+.sidebar-footer .btn {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .post-item {
@@ -688,6 +694,20 @@ body[data-view-mode="split"] .title {
 
 .save-state { transition: color 0.2s; }
 .save-state.busy { color: var(--text-dim); }
+
+/* --- visually hidden but usable (file input stays trigger-accessible) ----- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 .btn {
   padding: 4px 11px;
